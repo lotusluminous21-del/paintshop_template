@@ -13,7 +13,7 @@ env:
   - variable: NEXT_PUBLIC_SITE_NAME
     value: "Pavlicevits"
   - variable: NEXT_PUBLIC_APP_URL
-    value: "https://pavlicevits-eshop--pavlicevits-9a889.us-central1.hosted.app"
+    value: "https://pavlicevits-eshop--pavlicevits-9a889.europe-west4.hosted.app"
   - variable: NEXT_PUBLIC_ENABLE_AI
     value: "true"
   - variable: NEXT_PUBLIC_ENABLE_STRIPE

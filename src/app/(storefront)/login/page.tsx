@@ -9,6 +9,18 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { IndexedFadeInUp } from '@/components/ui/motion';
 
 export default function LoginPage() {
+    return (
+        <React.Suspense fallback={
+            <div className="flex-1 flex items-center justify-center min-h-[60vh] bg-background">
+                <div className="w-[50px] h-[50px] rounded-full border-[4px] border-secondary border-t-primary animate-spin shadow-sm"></div>
+            </div>
+        }>
+            <LoginContent />
+        </React.Suspense>
+    );
+}
+
+function LoginContent() {
     const { user, loading } = useAuth();
     const [isSigningIn, setIsSigningIn] = useState(false);
     const router = useRouter();
