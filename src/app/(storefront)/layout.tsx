@@ -38,7 +38,7 @@ export default function StorefrontLayout({
     children: React.ReactNode;
 }) {
     return (
-        <div className="relative flex min-h-screen w-full flex-col overflow-x-clip bg-background text-foreground font-sans bg-[radial-gradient(circle,#00000010_1px,transparent_1px)] bg-[size:40px_40px]">
+        <div className="relative flex min-h-screen w-full flex-col overflow-x-clip bg-background text-foreground font-sans bg-[radial-gradient(circle,#00000010_1px,transparent_1px)] bg-[size:40px_40px] bg-fixed">
             <div className="flex h-full grow flex-col">
                 <Header />
                 <main className="flex-1 w-full flex flex-col mb-16">

@@ -70,7 +70,7 @@ export function CartClient({ initialCart }: { initialCart?: Cart | null }) {
                     <p className="text-[#4b5563] mb-8">Looks like you haven't added any products to your cart yet.</p>
                 </IndexedFadeInUp>
                 <IndexedFadeInUp index={2}>
-                    <Link href="/products">
+                    <Link href="/categories">
                         <Button variant="default" className="rounded-full bg-[#0B1221] text-white hover:bg-black p-6 font-bold h-12 inline-flex items-center gap-2">
                             <ArrowLeft className="w-5 h-5" />
                             Continue Shopping
@@ -176,7 +176,7 @@ export function CartClient({ initialCart }: { initialCart?: Cart | null }) {
 
                         {/* Continue Shopping Link */}
                         <FadeInUp delay={0.2} className="pt-4 mt-2">
-                            <Link href="/products" className="inline-flex items-center gap-2 text-[14px] font-semibold text-[#6B7280] hover:text-[#0B1221] transition-colors">
+                            <Link href="/categories" className="inline-flex items-center gap-2 text-[14px] font-semibold text-[#6B7280] hover:text-[#0B1221] transition-colors">
                                 <ArrowLeft className="w-4 h-4" />
                                 Continue Shopping
                             </Link>

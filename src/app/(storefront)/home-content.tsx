@@ -62,7 +62,7 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                         </div>
                     </div>
                     <ImageReveal delay={0.2} className="order-1 md:order-2 h-[300px] sm:h-[400px] md:h-[600px] w-full relative">
-                        <div className="absolute inset-0 bg-center bg-no-repeat bg-cover grayscale hover:grayscale-0 transition-all duration-700 border border-border"
+                        <div className="absolute inset-0 bg-center bg-no-repeat bg-cover md:grayscale hover:grayscale-0 transition-all duration-700 border border-border"
                             style={{ backgroundImage: 'url("/images/homescreen/hero.webp")' }}>
                         </div>
                     </ImageReveal>
@@ -81,7 +81,7 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                         </FadeInUp>
                     </StaggerContainer>
                     <FadeInUp inStaggerGroup>
-                        <Link href="/collections" className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-accent hover:underline hover:text-primary transition-colors">
+                        <Link href="/categories" className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-accent hover:underline hover:text-primary transition-colors">
                             Δείτε Όλα <ChevronRight className="w-4 h-4" />
                         </Link>
                     </FadeInUp>

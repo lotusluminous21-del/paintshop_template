@@ -4,6 +4,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import { Verified } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useMobileCenterHover } from '@/hooks/useMobileCenterHover';
 
 export interface CollectionCardProps {
   title: string;
@@ -26,10 +27,15 @@ export function CollectionCard({
   onClick,
   className,
 }: CollectionCardProps) {
+  const { ref, isHovered } = useMobileCenterHover<HTMLDivElement>();
+
   return (
     <motion.div
+      ref={ref}
+      data-smart-hover={isHovered}
       onClick={onClick}
       whileHover={{ scale: 1.02 }}
+      animate={isHovered ? { scale: 1.02 } : { scale: 1 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className={cn(
         'group cursor-pointer flex flex-col h-full justify-start',
@@ -41,7 +47,7 @@ export function CollectionCard({
         variant === 'featured' ? 'aspect-[4/5]' : 'aspect-square'
       )}>
         <div
-          className="absolute inset-0 w-full h-full bg-cover bg-center group-hover:scale-105 transition-transform duration-500 grayscale group-hover:grayscale-0"
+          className="absolute inset-0 w-full h-full bg-cover bg-center group-hover:scale-105 group-data-[smart-hover=true]:scale-105 transition-transform duration-500 grayscale group-hover:grayscale-0 group-data-[smart-hover=true]:grayscale-0"
           style={{ backgroundImage: `url(${image})` }}
         />
       </div>

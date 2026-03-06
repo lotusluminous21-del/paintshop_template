@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { useLenis } from 'lenis/react';
 import { useMotionValue, useTransform, motion } from 'framer-motion';
 import { usePathname } from 'next/navigation';
@@ -10,7 +10,17 @@ export function KineticPostEffects({ children }: { children: ReactNode }) {
   
   // Disable kinetic scroll effects on pages with complex inner scroll areas
   // to avoid scroll fighting and jarring full-page blur artifacts.
-  const isKineticDisabled = pathname?.startsWith('/categories') || pathname?.startsWith('/expert');
+  const pathnameIsDisabled = pathname?.startsWith('/categories') || pathname?.startsWith('/expert');
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const isKineticDisabled = pathnameIsDisabled || isMobile;
 
   // We'll track the current scroll velocity via a motion value to smoothly map it to a blur amount
   const velocityY = useMotionValue(0);
@@ -26,6 +36,7 @@ export function KineticPostEffects({ children }: { children: ReactNode }) {
   // Experiment with the input range (0 to 50 is a typical fast scroll velocity)
   // and the output range (0 to 15 pixels of blur).
   const blurY = useTransform(velocityY, [0, 60], [0, 8]);
+  const blurYString = useTransform(blurY, (val) => `0, ${val}`);
 
   if (isKineticDisabled) {
     return <>{children}</>;
@@ -46,7 +57,7 @@ export function KineticPostEffects({ children }: { children: ReactNode }) {
             <motion.feGaussianBlur 
               in="SourceGraphic" 
               // We typecast as any because framer-motion might complain about SVG props
-              stdDeviation={useTransform(blurY, (val) => `0, ${val}`)}
+              stdDeviation={blurYString as any}
             />
           </filter>
         </defs>
@@ -59,7 +70,8 @@ export function KineticPostEffects({ children }: { children: ReactNode }) {
       <motion.div
         style={{
           filter: "url(#kinetic-motion-blur)",
-          willChange: "filter",
+          willChange: "filter, transform",
+          transform: "translateZ(0)",
         }}
         className="w-full relative min-h-screen z-0"
       >

@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { useMobileCenterHover } from '@/hooks/useMobileCenterHover';
 
 export interface ProductCardProps {
   id: string;
@@ -32,6 +33,7 @@ export function ProductCard({
   onAddToCart,
   className,
 }: ProductCardProps) {
+  const { ref, isHovered } = useMobileCenterHover<HTMLDivElement>();
   const categoryColors = {
     primary: 'text-primary',
     accent: 'text-accent',
@@ -46,10 +48,13 @@ export function ProductCard({
 
   return (
     <div
+      ref={ref}
+      data-smart-hover={isHovered}
       className={cn(
         'group relative bg-card border border-border rounded-lg overflow-hidden',
         'transition-all duration-200 ease-out',
         'hover:shadow-card-hover hover:-translate-y-0.5',
+        'data-[smart-hover=true]:shadow-card-hover data-[smart-hover=true]:-translate-y-0.5',
         onClick && 'cursor-pointer',
         className
       )}
@@ -60,7 +65,7 @@ export function ProductCard({
         <img
           src={image}
           alt={title}
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 group-data-[smart-hover=true]:scale-105"
         />
         
         {/* Badge */}
@@ -89,6 +94,7 @@ export function ProductCard({
               'bg-primary text-primary-foreground rounded-md',
               'opacity-0 translate-y-2 transition-all duration-200',
               'group-hover:opacity-100 group-hover:translate-y-0',
+              'group-data-[smart-hover=true]:opacity-100 group-data-[smart-hover=true]:translate-y-0',
               'hover:bg-primary-light',
               'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2'
             )}

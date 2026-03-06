@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
+import { useMobileCenterHover } from '@/hooks/useMobileCenterHover';
 
 export interface ServiceCardProps {
   icon: React.ReactNode;
@@ -21,6 +21,7 @@ export function ServiceCard({
   onClick,
   className,
 }: ServiceCardProps) {
+  const { ref, isHovered } = useMobileCenterHover<HTMLDivElement>();
   const iconColors = {
     primary: 'text-primary',
     accent: 'text-accent',
@@ -29,8 +30,11 @@ export function ServiceCard({
 
   return (
     <motion.div
+      ref={ref}
+      data-smart-hover={isHovered}
       onClick={onClick}
       whileHover="hover"
+      animate={isHovered ? "hover" : "initial"}
       className={cn(
         'group flex flex-col',
         onClick && 'cursor-pointer',
@@ -45,13 +49,13 @@ export function ServiceCard({
         className={cn(
           'w-12 h-12 flex items-center mb-4 transition-colors duration-300',
           iconColors[iconColor],
-          'group-hover:text-primary' // The requested color shift on hover
+          'group-hover:text-primary group-data-[smart-hover=true]:text-primary' // The requested color shift on hover
         )}
       >
         {icon}
       </motion.div>
 
-      <h4 className="text-sm font-bold uppercase tracking-wide mb-2 group-hover:text-accent transition-colors">
+      <h4 className="text-sm font-bold uppercase tracking-wide mb-2 group-hover:text-accent group-data-[smart-hover=true]:text-accent transition-colors">
         {title}
       </h4>
 

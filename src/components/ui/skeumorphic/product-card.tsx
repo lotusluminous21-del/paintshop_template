@@ -3,6 +3,7 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import { Product } from "@/lib/shopify/types";
+import { useMobileCenterHover } from "@/hooks/useMobileCenterHover";
 
 interface ProductCardProps {
     product: Product;
@@ -11,6 +12,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, variant = "standard", className }: ProductCardProps) {
+    const { ref, isHovered } = useMobileCenterHover<HTMLDivElement>();
     const price = product.priceRange.minVariantPrice.amount;
     const currency = product.priceRange.minVariantPrice.currencyCode === "EUR" ? "€" : "$";
     const featuredImage = product.featuredImage;
@@ -18,10 +20,12 @@ export function ProductCard({ product, variant = "standard", className }: Produc
     if (variant === "summary") {
         return (
             <div
+                ref={ref}
+                data-smart-hover={isHovered}
                 className={cn(
                     "group relative flex items-center gap-[18px] p-[16px] rounded-[28px] bg-[#ffffff] transition-all duration-300",
                     "shadow-sm",
-                    "hover:shadow-sm",
+                    "hover:shadow-sm data-[smart-hover=true]:shadow-sm",
                     className
                 )}
             >
@@ -65,10 +69,12 @@ export function ProductCard({ product, variant = "standard", className }: Produc
     if (variant === "featured") {
         return (
             <div
+                ref={ref}
+                data-smart-hover={isHovered}
                 className={cn(
                     "group relative flex flex-col items-center w-[160px] p-4 rounded-[24px] bg-[#ffffff] transition-all duration-300",
                     "shadow-sm",
-                    "hover:shadow-sm",
+                    "hover:shadow-sm data-[smart-hover=true]:shadow-sm",
                     className
                 )}
             >
@@ -78,7 +84,7 @@ export function ProductCard({ product, variant = "standard", className }: Produc
                             src={featuredImage.url}
                             alt={featuredImage.altText || product.title}
                             fill
-                            className="object-contain drop-shadow-sm transition-transform duration-500 group-hover:scale-105"
+                            className="object-contain drop-shadow-sm transition-transform duration-500 group-hover:scale-105 group-data-[smart-hover=true]:scale-105"
                         />
                     )}
                 </div>
@@ -100,10 +106,12 @@ export function ProductCard({ product, variant = "standard", className }: Produc
     // Standard variant
     return (
         <div
+            ref={ref}
+            data-smart-hover={isHovered}
             className={cn(
                 "group relative flex flex-col w-[174px] p-[20px] rounded-[32px] bg-[#ffffff] transition-all duration-300",
                 "shadow-sm",
-                "hover:shadow-sm",
+                "hover:shadow-sm data-[smart-hover=true]:shadow-sm",
                 className
             )}
         >
@@ -113,7 +121,7 @@ export function ProductCard({ product, variant = "standard", className }: Produc
                         src={featuredImage.url}
                         alt={featuredImage.altText || product.title}
                         fill
-                        className="object-contain transition-transform duration-500 group-hover:scale-105 drop-shadow-sm pt-[6px]"
+                        className="object-contain transition-transform duration-500 group-hover:scale-105 group-data-[smart-hover=true]:scale-105 drop-shadow-sm pt-[6px]"
                     />
                 )}
             </div>
