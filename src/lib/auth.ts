@@ -17,18 +17,8 @@ export async function signInWithGoogle(): Promise<User | null> {
     }
 
     try {
-        // Detect mobile devices
-        const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        
-        if (isMobile) {
-            // Mobile devices often block popups or have issues focusing them securely within some wrappers, so redirect is safer.
-            // signInWithRedirect doesn't return the user immediately; it redirects the page.
-            await signInWithRedirect(auth, googleProvider);
-            return null; // The redirect will handle the sign-in and reload the page.
-        } else {
-            const result = await signInWithPopup(auth, googleProvider);
-            return result.user;
-        }
+        const result = await signInWithPopup(auth, googleProvider);
+        return result.user;
     } catch (error) {
         console.error('Error signing in with Google', error);
         throw error;

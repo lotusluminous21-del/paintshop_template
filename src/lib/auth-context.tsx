@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
+import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, onSnapshot, getFirestore } from 'firebase/firestore';
 import { auth, app, db } from './firebase'; // Ensure these are exported from lib/firebase
 // Note: We previously checked lib/firebase and it exports 'auth' and 'db'.
@@ -41,6 +41,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+            // Purge legacy anonymous sessions since they are no longer supported
+            if (currentUser?.isAnonymous) {
+                console.log("Purging legacy anonymous session...");
+                if (auth) await signOut(auth);
+                return;
+            }
+
             setUser(currentUser);
 
             if (currentUser) {
@@ -72,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setLoading(false);
             }
         });
+
 
         return () => unsubscribeAuth();
     }, []);

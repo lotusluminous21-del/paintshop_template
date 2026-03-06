@@ -11,10 +11,8 @@
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/lib/auth-context';
-import { signInAnonymously } from '@/lib/auth';
 import {
     RotateCcw,
     Paperclip,
@@ -28,7 +26,6 @@ import {
     Loader2,
     X,
     ImageIcon,
-    UserCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { IndexedFadeInUp, FadeInUp } from '@/components/ui/motion';
@@ -285,13 +282,7 @@ export default function ExpertContent() {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const { user, loading: authLoading, isAnonymous } = useAuth();
-
-    useEffect(() => {
-        if (!authLoading && !user) {
-            signInAnonymously().catch(err => console.error("Anonymous login failed:", err));
-        }
-    }, [user, authLoading]);
+    const { user, loading: authLoading } = useAuth();
 
     const {
         messages,
@@ -359,6 +350,12 @@ export default function ExpertContent() {
         const trimmed = inputValue.trim();
         if (!trimmed && !pendingImage) return;
 
+        // Ensure the user is logged in before allowing them to send a message
+        if (!authLoading && !user) {
+            router.push('/login?redirect=/expert');
+            return;
+        }
+
         let imageUrl: string | undefined = undefined;
 
         if (pendingImage) {
@@ -381,7 +378,7 @@ export default function ExpertContent() {
         if (textareaRef.current) {
             textareaRef.current.style.height = 'auto';
         }
-    }, [inputValue, pendingImage, sendMessage]);
+    }, [inputValue, pendingImage, sendMessage, user, authLoading, router]);
 
     const handleKeyDown = useCallback(
         (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -449,17 +446,6 @@ export default function ExpertContent() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {isAnonymous && (
-                            <Link 
-                                href="/login?redirect=/expert" 
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                            >
-                                <UserCircle className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">Save Project (Register)</span>
-                                <span className="sm:hidden">Register</span>
-                            </Link>
-                        )}
-
                         {messages.length > 0 && (
                             <button
                                 onClick={resetSession}
@@ -518,6 +504,10 @@ export default function ExpertContent() {
                                             variant="outline"
                                             size="sm"
                                             onClick={() => {
+                                                if (!authLoading && !user) {
+                                                    router.push('/login?redirect=/expert');
+                                                    return;
+                                                }
                                                 sendMessage(s);
                                                 setInputValue('');
                                             }}
@@ -544,7 +534,13 @@ export default function ExpertContent() {
                                             msg.question.options.forEach((opt: string) => {
                                                 msgActions.push({
                                                     label: opt,
-                                                    onClick: () => sendMessage(opt),
+                                                    onClick: () => {
+                                                        if (!authLoading && !user) {
+                                                            router.push('/login?redirect=/expert');
+                                                            return;
+                                                        }
+                                                        sendMessage(opt);
+                                                    },
                                                 });
                                             });
                                         }

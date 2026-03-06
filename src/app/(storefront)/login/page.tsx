@@ -38,7 +38,7 @@ function LoginContent() {
             if (redirectParams) {
                 router.push(redirectParams);
             } else {
-                router.push('/profile');
+                router.push('/');
             }
         }
     }, [user, loading, isAnonymous, router, searchParams]);

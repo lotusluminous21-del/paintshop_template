@@ -70,7 +70,7 @@ export function Header({ className }: HeaderProps) {
                     <Link
                         href="/profile"
                         prefetch={false}
-                        className="hidden lg:flex w-10 h-10 rounded-full border border-border bg-muted items-center justify-center overflow-hidden hover:border-primary transition-colors shadow-sm"
+                        className="flex w-10 h-10 rounded-full border border-border bg-muted items-center justify-center overflow-hidden hover:border-primary transition-colors shadow-sm"
                         title={user ? "Account Dashboard" : "Sign In"}
                     >
                         {loading ? (
@@ -132,30 +132,6 @@ export function Header({ className }: HeaderProps) {
                                                 </Link>
                                             </motion.div>
                                         ))}
-
-                                        <motion.div
-                                            initial={{ opacity: 0, x: 20 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: 0.1 + (0.05 * navItems.length), duration: 0.4, ease: "easeOut" }}
-                                        >
-                                            <Link
-                                                href="/profile"
-                                                onClick={() => setIsMobileMenuOpen(false)}
-                                                className="group flex flex-col pt-6 pb-2 border-b border-transparent hover:border-border/30 transition-colors mt-2"
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-foreground text-3xl sm:text-5xl font-black uppercase tracking-tighter transition-colors group-hover:text-primary">
-                                                        {user ? "Account" : "Sign In"}
-                                                    </span>
-                                                    <span className="text-primary opacity-0 group-hover:opacity-100 transition-all transform -translate-x-4 group-hover:translate-x-0 duration-300">
-                                                        →
-                                                    </span>
-                                                </div>
-                                                <span className="text-muted-foreground text-xs font-semibold mt-2 max-w-[80%] uppercase tracking-[0.2em]">
-                                                    {user ? "Διαχείριση Λογαριασμού" : "Σύνδεση Στο Σύστημα"}
-                                                </span>
-                                            </Link>
-                                        </motion.div>
                                     </nav>
                                 </div>
                                 <div className="px-8 py-6 border-t border-border/10 bg-muted/10 flex-shrink-0 mt-auto">

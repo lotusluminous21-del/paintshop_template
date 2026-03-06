@@ -108,53 +108,53 @@ export default function ProfilePage() {
         : "";
 
     return (
-        <div className="flex flex-1 w-full mx-auto md:px-0 lg:px-0 xl:px-0 max-w-none bg-white">
+        <div className="flex flex-col flex-1 w-full mx-auto md:px-0 lg:px-0 xl:px-0 max-w-none bg-white lg:flex-row">
             {/* Sidebar - Clean Light Theme */}
-            <aside className="w-64 border-r border-slate-200 hidden lg:flex flex-col bg-slate-50 p-6 gap-8 shrink-0 min-h-[calc(100vh-80px)]">
-                <div className="flex flex-col gap-1">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Management</p>
+            <aside className="w-full lg:w-64 border-b lg:border-b-0 lg:border-r border-slate-200 flex lg:flex-col bg-slate-50 p-6 gap-4 lg:gap-8 shrink-0 lg:min-h-[calc(100vh-80px)] overflow-x-auto lg:overflow-x-visible">
+                <div className="flex lg:flex-col gap-2 lg:gap-1 min-w-max lg:min-w-0">
+                    <p className="hidden lg:block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Management</p>
                     <button
                         onClick={() => setActiveTab('overview')}
                         className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left",
-                            activeTab === 'overview' ? "bg-slate-200 border-l-[3px] border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                            activeTab === 'overview' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <LayoutDashboard className="w-4 h-4" strokeWidth={2.5} /> Overview
                     </button>
                     <button
                         onClick={() => setActiveTab('orders')}
                         className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left",
-                            activeTab === 'orders' ? "bg-slate-200 border-l-[3px] border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                            activeTab === 'orders' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <Package className="w-4 h-4" strokeWidth={2.5} /> Orders
                     </button>
                     <button
                         onClick={() => setActiveTab('projects')}
                         className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left",
-                            activeTab === 'projects' ? "bg-slate-200 border-l-[3px] border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                            activeTab === 'projects' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <Bookmark className="w-4 h-4" strokeWidth={2.5} /> Saved Projects
                     </button>
                     <button
                         onClick={() => setActiveTab('docs')}
                         className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left",
-                            activeTab === 'docs' ? "bg-slate-200 border-l-[3px] border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                            activeTab === 'docs' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <FileText className="w-4 h-4" strokeWidth={2.5} /> Technical Docs
                     </button>
                     <button
                         onClick={() => setActiveTab('settings')}
-                        className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left mt-4",
-                            activeTab === 'settings' ? "bg-slate-200 border-l-[3px] border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                        className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left lg:mt-4",
+                            activeTab === 'settings' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <Settings className="w-4 h-4" strokeWidth={2.5} /> Settings
                     </button>
 
-                    <button onClick={handleLogout} className="flex items-center w-full gap-3 px-3 py-3 text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors font-bold text-sm mt-8 border-t border-slate-200">
+                    <button onClick={handleLogout} className="flex items-center lg:w-full gap-3 px-3 py-2 lg:py-3 text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors font-bold text-sm lg:mt-8 lg:border-t border-slate-200">
                         <ArrowLeftFromLine className="w-4 h-4" strokeWidth={2.5} /> Sign Out
                     </button>
                 </div>
 
-                <div className="mt-auto p-5 bg-[#165c52]/5 border border-[#165c52]/15">
+                <div className="hidden lg:block mt-auto p-5 bg-[#165c52]/5 border border-[#165c52]/15">
                     <p className="text-[10px] font-black text-[#165c52] uppercase tracking-widest mb-1">Support Tier</p>
                     <p className="text-sm font-bold text-slate-900 mb-4">{profile?.role === 'admin' ? "System Admin" : "Standard Account"}</p>
                     <Button className="w-full py-2 bg-[#165c52] text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#0f4d44] transition-all rounded-none shadow-none h-auto">
@@ -164,8 +164,8 @@ export default function ProfilePage() {
             </aside>
 
             {/* Main Content Area */}
-            <div className="flex-1 p-8 md:p-12 lg:pl-16 max-w-7xl min-h-screen">
-                <div className="mb-12 flex items-center justify-between border-b border-slate-200 pb-8">
+            <div className="flex-1 p-4 sm:p-8 md:p-12 lg:pl-16 max-w-7xl min-h-screen">
+                <div className="mb-8 lg:mb-12 flex flex-col-reverse lg:flex-row items-start lg:items-center justify-between border-b border-slate-200 pb-8 gap-6">
                     <div>
                         <h1 className="text-[32px] leading-none font-black text-slate-900 uppercase tracking-tighter mb-2">
                             {activeTab === 'overview' && 'Account Overview'}
@@ -183,7 +183,7 @@ export default function ProfilePage() {
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-4 bg-slate-50 border border-slate-200 p-2 pr-6 shrink-0">
+                    <div className="flex w-full lg:w-auto items-center gap-4 bg-slate-50 border border-slate-200 p-2 pr-6 shrink-0">
                         <div className="w-10 h-10 bg-white border border-slate-200 flex items-center justify-center p-0.5">
                             {user.photoURL ? (
                                 <img
@@ -197,9 +197,9 @@ export default function ProfilePage() {
                                 <UserIcon className="w-6 h-6 text-slate-400" />
                             )}
                         </div>
-                        <div className="flex flex-col">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center">
                             <span className="text-[11px] font-black uppercase tracking-widest text-slate-900">{user.displayName?.split(" ")[0] || "USER"}</span>
-                            <span className="text-[10px] text-slate-500">{user.email}</span>
+                            <span className="text-[10px] text-slate-500 break-all">{user.email}</span>
                         </div>
                     </div>
                 </div>
@@ -207,7 +207,7 @@ export default function ProfilePage() {
                 {/* OVERVIEW TAB */}
                 {activeTab === 'overview' && (
                     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 mb-12 sm:mb-16">
                             <div className="bg-white border border-slate-200 p-6 flex flex-col justify-between hover:border-[#165c52] transition-colors h-[160px]">
                                 <div>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Active Projects</p>
@@ -231,7 +231,7 @@ export default function ProfilePage() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 sm:gap-12">
                             {/* Recent Orders Overview */}
                             <section>
                                 <div className="flex items-center justify-between mb-6">
