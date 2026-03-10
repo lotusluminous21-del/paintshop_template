@@ -10,7 +10,7 @@ export function KineticPostEffects({ children }: { children: ReactNode }) {
   
   // Disable kinetic scroll effects on pages with complex inner scroll areas
   // to avoid scroll fighting and jarring full-page blur artifacts.
-  const pathnameIsDisabled = pathname?.startsWith('/categories') || pathname?.startsWith('/expert');
+  const pathnameIsDisabled = pathname?.startsWith('/categories') || pathname?.startsWith('/expert') || pathname?.startsWith('/admin');
   const [isMobile, setIsMobile] = useState(false);
   
   useEffect(() => {

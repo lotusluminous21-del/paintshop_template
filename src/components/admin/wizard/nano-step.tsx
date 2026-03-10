@@ -418,23 +418,14 @@ export function NanoStep({ products, onBack, onRetry, onRemoveBg, onStartStudio,
                                         </Button>
 
                                         {!['BATCH_GENERATING', 'PENDING_NANO_BANANA', 'PENDING_STUDIO_GENERATION'].some(s => activeProduct.status.includes(s)) && (
-                                            <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 grid grid-cols-2 gap-3 z-30">
+                                            <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 grid grid-cols-1 gap-3 z-30">
                                                 <Button
                                                     size="sm"
                                                     onClick={() => onRegenerate(activeProduct.sku, environment, generationModel)}
-                                                    className="col-span-1 bg-zinc-600 hover:bg-zinc-700 text-white border-0 text-[10px] font-bold uppercase"
+                                                    className="w-full bg-zinc-600 hover:bg-zinc-700 text-white border-0 text-[10px] font-bold uppercase"
                                                 >
                                                     <RotateCcw className="w-3 h-3 mr-2" />
                                                     Retry
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    onClick={() => onRemoveBg(activeProduct.sku)}
-                                                    className="col-span-1 bg-white/90 hover:bg-white text-zinc-900 border-0 text-[10px] font-bold uppercase"
-                                                >
-                                                    <Layers className="w-3 h-3 mr-2" />
-                                                    Remove BG
                                                 </Button>
                                             </div>
                                         )}
@@ -541,7 +532,7 @@ export function NanoStep({ products, onBack, onRetry, onRemoveBg, onStartStudio,
                                     )}
                                 >
                                     {displayImage
-                                        ? (activeProduct.status === 'APPROVED' ? "Ready / BG Removed" : "Studio Visual")
+                                        ? (activeProduct.status === 'APPROVED' ? "Ready" : "Studio Visual")
                                         : activeProduct.status === 'ENRICHMENT_FAILED'
                                             ? "Failed"
                                             : (isBatchGenerating || activeProduct.status === 'PENDING_NANO_BANANA' || activeProduct.status.includes('GENERATING'))
@@ -680,33 +671,6 @@ export function NanoStep({ products, onBack, onRetry, onRemoveBg, onStartStudio,
                     </AlertDialog>
 
                     {/* Bulk Remove BG Action */}
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button
-                                variant="outline"
-                                disabled={!hasAnyGenerated || isBatchGenerating}
-                                className="h-10 px-5 rounded-none border-cyan-100 text-cyan-700 hover:bg-cyan-100 hover:text-cyan-800 font-bold text-xs transition-all transform hover:scale-105 duration-200"
-                            >
-                                <Layers className="w-3.5 h-3.5 mr-2" />
-                                Bulk Remove BG
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Bulk Remove Background?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    Background removal will be triggered for products that have studio images generated but haven't had their background removed yet.
-                                    Products with manual edits or already removed backgrounds will be skipped to preserve your work.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => onRemoveBg("ALL")} className="bg-cyan-600 hover:bg-cyan-700">
-                                    Remove Backgrounds
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
 
                     <AlertDialog>
                         <AlertDialogTrigger asChild>

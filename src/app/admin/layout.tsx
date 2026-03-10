@@ -154,7 +154,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             </Sheet>
 
             {/* Main Content Area */}
-            <main className="flex-1 lg:ml-56 flex flex-col h-screen overflow-hidden bg-zinc-50/30">
+            <main className="flex-1 lg:ml-56 flex flex-col h-full h-[100dvh] overflow-hidden bg-zinc-50/30">
 
                 {/* Minimalist Header */}
                 <header className="h-14 shrink-0 bg-white border-b border-zinc-200 z-40 px-4 lg:px-6 flex items-center justify-between gap-4">
@@ -194,10 +194,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </header>
 
                 {/* Content Frame */}
-                <div className={cn(
-                    "flex-1 overflow-auto",
-                    (pathname.includes('/wizard') || pathname.includes('/lab')) ? "p-0" : "p-4 md:p-6 lg:p-8"
-                )}>
+                <div 
+                    id="admin-content-frame"
+                    className={cn(
+                        "flex-1 overflow-auto overscroll-contain",
+                        (pathname.includes('/wizard') || pathname.includes('/lab')) ? "p-0" : "p-4 md:p-6 lg:p-8"
+                    )}
+                >
                     {/* We no longer constrain max-width strictly to allow datatables to breathe, 
                         but we provide sensible padding. */}
                     {children}

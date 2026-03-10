@@ -37,18 +37,16 @@ def _normalize_suffix(suffix: str) -> str:
 def _build_product_images(ai: dict) -> list:
     """
     Build the images array for the Shopify product payload.
-    Returns list of dicts with 'src' key, base image first.
+    Returns list of dicts with 'src' key, base image only (variants removed).
     """
     images_data = ai.get("images", [])
     if not images_data:
         return []
 
     base_images = [img for img in images_data if _normalize_suffix(img.get("suffix", "")) == "base"]
-    variant_images = [img for img in images_data if _normalize_suffix(img.get("suffix", "")) != "base"]
 
-    ordered = base_images + variant_images
     result = []
-    for img in ordered:
+    for img in base_images:
         url = img.get("url", "")
         if not url:
             continue
@@ -118,7 +116,7 @@ def _build_metafields(ai: dict) -> list:
         # List-value fields
         _add("surfaces", specs.get("surface_suitability"), "json")
         _add("special_properties", specs.get("special_properties"), "json")
-        _add("application_method", specs.get("application_method"), "json")
+        _add("application_method", specs.get("application_method"), "list.single_line_text_field")
 
     return metafields
 
@@ -440,18 +438,10 @@ async def sync_products_job():
             warnings = []
 
             # ============================================
-            # PHASE 4: Link Variant Images (from response — no extra API calls)
+            # PHASE 4: Link Variant Images (SKIPPED)
             # ============================================
-            if ai_variants and len(images) > 1:
-                try:
-                    linked_count = _link_variant_images_from_response(
-                        shopify, result_product, ai_variants, ai.get("images", [])
-                    )
-                    if linked_count == 0 and len(ai_variants) > 0:
-                        warnings.append("variant images not linked (no matching suffixes)")
-                except Exception as img_err:
-                    logger.warning(f"Non-critical: Failed to link variant images for {sku}: {img_err}")
-                    warnings.append(f"variant image linking failed: {str(img_err)[:80]}")
+            # Variant image rendering is disabled, everyone gets the base image
+            pass
 
             # ============================================
             # PHASE 5: Assign to Collection

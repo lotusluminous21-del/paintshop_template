@@ -688,11 +688,11 @@ class ShopifyClient:
              "description": "Recommended spray nozzle type/size", "pin": False},
             # List fields
             {"name": "Κατάλληλες Επιφάνειες / Surfaces", "key": "surfaces", "type": "json",
-             "description": "Compatible surfaces", "pin": True},
+             "description": "Compatible surfaces", "pin": False},
             {"name": "Ειδικές Ιδιότητες / Special Properties", "key": "special_properties", "type": "json",
-             "description": "Special product properties (e.g. Anti-corrosive, UV Resistant)", "pin": True},
-            {"name": "Μέθοδος Εφαρμογής / Application Method", "key": "application_method", "type": "json",
-             "description": "Application methods (e.g. Spray, Brush, Roller)", "pin": True},
+             "description": "Special product properties (e.g. Anti-corrosive, UV Resistant)", "pin": False},
+            {"name": "Μέθοδος Εφαρμογής / Application Method", "key": "application_method", "type": "list.single_line_text_field",
+             "description": "Application methods (e.g. Spray, Brush, Roller)", "pin": False},
         ]
 
         mutation = """

@@ -425,9 +425,9 @@ def handle_nano_banana_phase(doc_ref, sku, name, ai_data):
     elif category == "Χρώματα Βάσης":
         decorative_effect = "mild decorative crown of high-viscosity, thick liquid paint splashes and bold waves"
     elif category == "Βερνίκια & Φινιρίσματα":
-        decorative_effect = "mild decorative crown of smooth, crystalline, semi-transparent liquid gloss waves"
+        decorative_effect = "minimalist, subtle smooth crystalline paint accent fitting a clean light-industrial style"
     elif category == "Στόκοι & Πλαστελίνες":
-        decorative_effect = "subtle, thick matte textured material crests and smooth paste-like ripples"
+        decorative_effect = "minimalist, subtle matte textured material crests fitting a clean light-industrial style"
     elif category == "Πινέλα & Εργαλεία":
         decorative_effect = "dynamic, sweeping artistic paint brush-strokes playfully wrapping around the base"
     elif category == "Αξεσουάρ":
@@ -443,13 +443,13 @@ def handle_nano_banana_phase(doc_ref, sku, name, ai_data):
     
     NANO_PROMPTS = {
         "clean": f"""Using the provided image ONLY as a reference for the product's labels, colors, and shape, generate a BRAND NEW photography with these exact rules:
-1.  **COMMAND**: Ignore the camera angle, perspective, and lighting of the source image. Re-render the product from scratch, against an **absolutely flat, seamless, solid matte chroma key green (#00FF00) backdrop**.
-2.  **NEGATIVE INSTRUCTIONS**: DO NOT include a horizon line, floor texture, visible surface transition, or depth. **Completely eliminate all floor reflections and contact shadows.** The green must be a solid, non-gradient color without lighting falloff.
+1.  **COMMAND**: Ignore the camera angle, perspective, and lighting of the source image. Re-render the product from scratch, against an **absolutely flat, seamless, solid pure white (#FFFFFF) backdrop**.
+2.  **NEGATIVE INSTRUCTIONS**: DO NOT include a horizon line, floor texture, visible surface transition, or depth. **Completely eliminate all floor reflections and contact shadows.** The white must be a solid, non-gradient color without lighting falloff.
 3.  **Composition & Angle**: Show the product from a straight-on, front-facing eye-level angle. Center it vertically/horizontally. {sizing_instruction} Full visibility (not cut off).
-4.  **Background & Lighting**: The entire canvas background must be a **uniform, flat, and non-reflective #00FF00 green** (professional movie-style green screen). Use even studio lighting that does not cast any shadow on the background.
+4.  **Background & Lighting**: The entire canvas background must be a **uniform, flat, and non-reflective #FFFFFF pure white**. Use even studio lighting that does not cast any shadow on the background.
 5.  **Subject Isolation**: EXTRACT A SINGLE ITEM. If the source shows multiple items, generate ONLY ONE single item.
 6.  **Identity Accuracy**: PRESERVE THE IDENTITY (text, labels, logos, colors). Ensure all text on the label is legible and identical to the source.
-7.  **Surface**: The product should appear to float slightly or sit on a perfectly invisible surface that does not interact visually with the green background.""",
+7.  **Surface**: The product should appear to float slightly or sit on a perfectly invisible surface that does not interact visually with the white background.""",
 
         "realistic": f"""Using the provided image ONLY as a reference for the product's labels, colors, and shape, generate a BRAND NEW photography with these exact rules:
 1.  **COMMAND**: Ignore the camera angle, perspective, and lighting of the source image. Re-render the product from scratch.
@@ -460,19 +460,19 @@ def handle_nano_banana_phase(doc_ref, sku, name, ai_data):
 6.  **Aesthetic**: Authentic, premium yet practical workshop vibe.""",
 
         "modern": f"""Using the provided image ONLY as a reference for the product's labels, colors, and shape, generate a BRAND NEW photography with these exact rules:
-1.  **COMMAND**: Ignore the camera angle, perspective, and lighting of the source image. Re-render the product from scratch, against an **absolutely flat, seamless, solid matte chroma key green (#00FF00) backdrop**.
-2.  **NEGATIVE INSTRUCTIONS**: DO NOT include a horizon line, visible floor, or any depth in the background. **Completely eliminate all floor reflections.** No visible shadows cast on the green background. The background must not have texture or light gradients.
+1.  **COMMAND**: Ignore the camera angle, perspective, and lighting of the source image. Re-render the product from scratch, against an **absolutely flat, seamless, solid pure white (#FFFFFF) backdrop**.
+2.  **NEGATIVE INSTRUCTIONS**: DO NOT include a horizon line, visible floor, or any depth in the background. **Completely eliminate all floor reflections.** No visible shadows cast on the white background. The background must not have texture or light gradients.
 3.  **Composition & Camera**: Straight-on, front-facing eye-level angle. Center vertically/horizontally. {sizing_instruction}
-4.  **Vibrant Lighting**: Professional multi-point studio lighting with subtle rim lighting. **The product surface must actively capture sharp reflections from the surrounding visual elements, but NOT from the green background itself.**
+4.  **Vibrant Lighting**: Professional multi-point studio lighting with subtle rim lighting. **The product surface must actively capture sharp reflections from the surrounding visual elements, but NOT from the white background itself.**
 5.  **Explosive Visuals**: SURROUND the product with a {decorative_effect}. {color_instruction}
 6.  **Identity Accuracy**: Extract the main product unit. PRESERVE THE BRANDING AND TEXT Identity.
-7.  **Background**: Solid, uniform chroma key green (#00FF00) covering the entire background area with zero texture or shading."""
+7.  **Background**: Solid, uniform pure white (#FFFFFF) covering the entire background area with zero texture or shading."""
     }
 
     IMAGEN_PROMPTS = {
-        "clean": f"Professional studio product photography. The product is center-framed. **Background**: Absolutely flat, solid, non-reflective chroma key green (#00FF00) covering the entire frame. **No floor, no shadows, no reflections, and no horizon lines.** The product appears to be perfectly isolated against a uniform green void. {sizing_instruction}",
+        "clean": f"Professional studio product photography. The product is center-framed. **Background**: Absolutely flat, solid, non-reflective pure white (#FFFFFF) covering the entire frame. **No floor, no shadows, no reflections, and no horizon lines.** The product appears to be perfectly isolated against a uniform white void. {sizing_instruction}",
         "realistic": f"Professional cinematic product photography. The product sits on a high-texture, dark-grey polished concrete surface with realistic micro-reflections. {sizing_instruction} Environment: A minimalist, high-end design workshop with soft, volumetric natural daylight streaming from a side window. Lighting: Warm 4000K sunlight with subtle lens bloom and soft, elongated natural shadows. Camera: 50mm f/1.8 depth of field, sharp focus on the product label with a creamy background blur.",
-        "modern": f"High-end commercial photography. The product is surrounded by a {decorative_effect}. {color_instruction} {sizing_instruction} **Background**: Solid, uniform, flat chroma key green (#00FF00) screen with **zero reflections, zero shadows, and no visible floor/wall junction.** Lighting: Environment-driven tech-premium setup, ensuring the background remains a solid un-lit color."
+        "modern": f"High-end commercial photography. The product is surrounded by a {decorative_effect}. {color_instruction} {sizing_instruction} **Background**: Solid, uniform, flat pure white (#FFFFFF) screen with **zero reflections, zero shadows, and no visible floor/wall junction.** Lighting: Environment-driven tech-premium setup, ensuring the background remains a solid un-lit color."
     }
     
     # Identify unique variant colors that need dedicated images
@@ -637,7 +637,7 @@ def handle_nano_banana_phase(doc_ref, sku, name, ai_data):
                     raise Exception("Failed to generate Base Studio image")
                 
                 # --- PHASE 3.B: Variant Recoloring using Gemini 2.5 Flash Image ---
-                if unique_colors and base_image_bytes:
+                if False and unique_colors and base_image_bytes:
                     doc_ref.update({"enrichment_message": f"Rendering {len(unique_colors)} variant colors..."})
                     logger.info(f"Starting semantic recoloring for {len(unique_colors)} variants of {sku}")
                     
