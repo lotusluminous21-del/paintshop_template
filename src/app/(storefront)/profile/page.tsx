@@ -64,7 +64,7 @@ export default function ProfilePage() {
     if (authLoading || (user && dataLoading && !customerData)) {
         return (
             <div className="flex-1 flex items-center justify-center min-h-[60vh] bg-slate-50">
-                <div className="w-[50px] h-[50px] rounded-full border-[4px] border-slate-200 border-t-[#165c52] animate-spin shadow-sm"></div>
+                <div className="w-[50px] h-[50px] rounded-full border-[4px] border-slate-200 border-t-[#19657a] animate-spin shadow-sm"></div>
             </div>
         );
     }
@@ -72,8 +72,8 @@ export default function ProfilePage() {
     if (!user) {
         return (
             <div className="flex flex-1 flex-col items-center justify-center min-h-[70vh] text-center px-4 bg-slate-50">
-                <div className="w-24 h-24 bg-white border border-slate-200 flex items-center justify-center mb-8 shadow-sm group hover:border-[#165c52] transition-colors cursor-default">
-                    <UserIcon className="w-10 h-10 text-slate-400 group-hover:text-[#165c52] transition-colors" strokeWidth={1.5} />
+                <div className="w-24 h-24 bg-white border border-slate-200 flex items-center justify-center mb-8 shadow-sm group hover:border-[#19657a] transition-colors cursor-default">
+                    <UserIcon className="w-10 h-10 text-slate-400 group-hover:text-[#19657a] transition-colors" strokeWidth={1.5} />
                 </div>
                 <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter mb-4">Account Access</h1>
                 <p className="text-sm font-bold text-slate-500 mb-10 max-w-sm uppercase tracking-widest leading-relaxed">
@@ -84,7 +84,7 @@ export default function ProfilePage() {
                     <Button
                         onClick={handleLogin}
                         disabled={isSigningIn}
-                        className="w-full text-[10px] tracking-widest uppercase font-black bg-[#165c52] text-white hover:bg-[#0f4d44]"
+                        className="w-full text-[10px] tracking-widest uppercase font-black bg-[#19657a] text-white hover:bg-[#19657a]"
                         size="lg"
                     >
                         {isSigningIn ? "Authorizing..." : "Authenticate with Google"}
@@ -116,35 +116,35 @@ export default function ProfilePage() {
                     <button
                         onClick={() => setActiveTab('overview')}
                         className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left",
-                            activeTab === 'overview' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                            activeTab === 'overview' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#19657a] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <LayoutDashboard className="w-4 h-4" strokeWidth={2.5} /> Overview
                     </button>
                     <button
                         onClick={() => setActiveTab('orders')}
                         className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left",
-                            activeTab === 'orders' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                            activeTab === 'orders' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#19657a] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <Package className="w-4 h-4" strokeWidth={2.5} /> Orders
                     </button>
                     <button
                         onClick={() => setActiveTab('projects')}
                         className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left",
-                            activeTab === 'projects' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                            activeTab === 'projects' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#19657a] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <Bookmark className="w-4 h-4" strokeWidth={2.5} /> Saved Projects
                     </button>
                     <button
                         onClick={() => setActiveTab('docs')}
                         className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left",
-                            activeTab === 'docs' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                            activeTab === 'docs' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#19657a] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <FileText className="w-4 h-4" strokeWidth={2.5} /> Technical Docs
                     </button>
                     <button
                         onClick={() => setActiveTab('settings')}
                         className={cn("flex items-center gap-3 px-3 py-2 font-bold text-sm transition-colors text-left lg:mt-4",
-                            activeTab === 'settings' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#165c52] text-slate-900" : "text-slate-500 hover:text-slate-900")}
+                            activeTab === 'settings' ? "bg-slate-200 lg:border-l-[3px] border-b-[3px] lg:border-b-0 border-[#19657a] text-slate-900" : "text-slate-500 hover:text-slate-900")}
                     >
                         <Settings className="w-4 h-4" strokeWidth={2.5} /> Settings
                     </button>
@@ -154,10 +154,10 @@ export default function ProfilePage() {
                     </button>
                 </div>
 
-                <div className="hidden lg:block mt-auto p-5 bg-[#165c52]/5 border border-[#165c52]/15">
-                    <p className="text-[10px] font-black text-[#165c52] uppercase tracking-widest mb-1">Support Tier</p>
+                <div className="hidden lg:block mt-auto p-5 bg-[#19657a]/5 border border-[#19657a]/15">
+                    <p className="text-[10px] font-black text-[#19657a] uppercase tracking-widest mb-1">Support Tier</p>
                     <p className="text-sm font-bold text-slate-900 mb-4">{profile?.role === 'admin' ? "System Admin" : "Standard Account"}</p>
-                    <Button className="w-full py-2 bg-[#165c52] text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#0f4d44] transition-all rounded-none shadow-none h-auto">
+                    <Button className="w-full py-2 bg-[#19657a] text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#19657a] transition-all rounded-none shadow-none h-auto">
                         Contact Specialist
                     </Button>
                 </div>
@@ -208,26 +208,26 @@ export default function ProfilePage() {
                 {activeTab === 'overview' && (
                     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 mb-12 sm:mb-16">
-                            <div className="bg-white border border-slate-200 p-6 flex flex-col justify-between hover:border-[#165c52] transition-colors h-[160px]">
+                            <div className="bg-white border border-slate-200 p-6 flex flex-col justify-between hover:border-[#19657a] transition-colors h-[160px]">
                                 <div>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Active Projects</p>
                                     <h3 className="text-4xl font-black text-slate-900 tracking-tighter">{unfulfilledCount}</h3>
                                 </div>
-                                <Factory className="w-6 h-6 text-[#165c52]" strokeWidth={2} />
+                                <Factory className="w-6 h-6 text-[#19657a]" strokeWidth={2} />
                             </div>
-                            <div className="bg-white border border-slate-200 p-6 flex flex-col justify-between hover:border-[#165c52] transition-colors h-[160px]">
+                            <div className="bg-white border border-slate-200 p-6 flex flex-col justify-between hover:border-[#19657a] transition-colors h-[160px]">
                                 <div>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Lifetime Spend</p>
                                     <h3 className="text-4xl font-black text-slate-900 tracking-tighter">${parseFloat(amountSpent).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h3>
                                 </div>
-                                <Banknote className="w-6 h-6 text-[#165c52]" strokeWidth={2} />
+                                <Banknote className="w-6 h-6 text-[#19657a]" strokeWidth={2} />
                             </div>
-                            <div className="bg-white border border-slate-200 p-6 flex flex-col justify-between hover:border-[#165c52] transition-colors h-[160px]">
+                            <div className="bg-white border border-slate-200 p-6 flex flex-col justify-between hover:border-[#19657a] transition-colors h-[160px]">
                                 <div>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Orders</p>
                                     <h3 className="text-4xl font-black text-slate-900 tracking-tighter">{customerData?.numberOfOrders || 0}</h3>
                                 </div>
-                                <Package className="w-6 h-6 text-[#165c52]" strokeWidth={2} />
+                                <Package className="w-6 h-6 text-[#19657a]" strokeWidth={2} />
                             </div>
                         </div>
 
@@ -236,7 +236,7 @@ export default function ProfilePage() {
                             <section>
                                 <div className="flex items-center justify-between mb-6">
                                     <h2 className="text-xl font-black uppercase tracking-tighter text-slate-900">Recent Orders</h2>
-                                    <button onClick={() => setActiveTab('orders')} className="text-[10px] font-black uppercase tracking-widest text-[#165c52] border-b-2 border-[#165c52] pb-0.5">View All</button>
+                                    <button onClick={() => setActiveTab('orders')} className="text-[10px] font-black uppercase tracking-widest text-[#19657a] border-b-2 border-[#19657a] pb-0.5">View All</button>
                                 </div>
 
                                 {orders.length > 0 ? (
@@ -247,12 +247,12 @@ export default function ProfilePage() {
                                             return (
                                                 <div key={idx} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group">
                                                     <div>
-                                                        <p className="font-bold text-slate-900 text-sm group-hover:text-[#165c52] transition-colors">{order.name}</p>
+                                                        <p className="font-bold text-slate-900 text-sm group-hover:text-[#19657a] transition-colors">{order.name}</p>
                                                         <p className="text-[11px] text-slate-500 mt-0.5">{dateStr}</p>
                                                     </div>
                                                     <div className="text-right">
                                                         <p className="font-bold text-slate-900 text-sm">${parseFloat(order.totalPriceSet?.shopMoney?.amount || "0").toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-                                                        <p className={cn("text-[9px] font-black uppercase tracking-widest mt-1", isFulfilled ? "text-[#165c52]" : "text-amber-600")}>
+                                                        <p className={cn("text-[9px] font-black uppercase tracking-widest mt-1", isFulfilled ? "text-[#19657a]" : "text-amber-600")}>
                                                             {isFulfilled ? "Delivered" : "In Transit"}
                                                         </p>
                                                     </div>
@@ -304,7 +304,7 @@ export default function ProfilePage() {
                                         <div className="pt-2">
                                             <button
                                                 onClick={() => setActiveTab('settings')}
-                                                className="text-[#165c52] text-[9px] font-black uppercase tracking-widest hover:underline"
+                                                className="text-[#19657a] text-[9px] font-black uppercase tracking-widest hover:underline"
                                             >
                                                 Update Profile Details
                                             </button>
@@ -338,7 +338,7 @@ export default function ProfilePage() {
 
                                             return (
                                                 <tr key={idx} className="group hover:bg-slate-50/50 transition-colors">
-                                                    <td className="px-6 py-5 font-bold text-slate-900 text-[13px] group-hover:text-[#165c52] cursor-pointer">{order.name}</td>
+                                                    <td className="px-6 py-5 font-bold text-slate-900 text-[13px] group-hover:text-[#19657a] cursor-pointer">{order.name}</td>
                                                     <td className="px-6 py-5 text-slate-500 text-[13px] font-medium">{dateStr}</td>
                                                     <td className="px-6 py-5 text-slate-500 text-[12px] truncate max-w-[200px]">
                                                         {order.lineItems?.edges?.map((e: any) => e.node.name).join(", ")}
@@ -347,7 +347,7 @@ export default function ProfilePage() {
                                                         <span className={cn(
                                                             "inline-flex items-center text-[9px] font-black uppercase px-2 py-1 tracking-widest",
                                                             isFulfilled
-                                                                ? "bg-[#165c52]/10 text-[#165c52]"
+                                                                ? "bg-[#19657a]/10 text-[#19657a]"
                                                                 : "bg-slate-100 text-slate-600"
                                                         )}>
                                                             {isFulfilled ? "Delivered" : "In Transit"}
@@ -365,7 +365,7 @@ export default function ProfilePage() {
                                 <Package className="w-12 h-12 text-slate-300 mb-4" strokeWidth={1.5} />
                                 <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-2">No Order History</h3>
                                 <p className="text-sm text-slate-500 max-w-sm mb-8 leading-relaxed">Your account doesn't have any past orders linked. Once you finalize a purchase, it will strictly be documented here.</p>
-                                <Button className="bg-[#165c52] text-white rounded-none shadow-none uppercase text-[10px] font-black tracking-widest px-8 hover:bg-[#0f4d44]">
+                                <Button className="bg-[#19657a] text-white rounded-none shadow-none uppercase text-[10px] font-black tracking-widest px-8 hover:bg-[#19657a]">
                                     Browse Inventory
                                 </Button>
                             </div>
@@ -381,7 +381,7 @@ export default function ProfilePage() {
                             <Bookmark className="w-12 h-12 text-slate-300 mb-4" strokeWidth={1.5} />
                             <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter mb-2">No Saved Configurations</h3>
                             <p className="text-sm text-slate-500 max-w-sm mb-8 leading-relaxed">Save custom paint configurations or AI-generated solution plans to access them instantly.</p>
-                            <Button className="bg-[#165c52] text-white rounded-none shadow-none uppercase text-[10px] font-black tracking-widest px-8 hover:bg-[#0f4d44]">
+                            <Button className="bg-[#19657a] text-white rounded-none shadow-none uppercase text-[10px] font-black tracking-widest px-8 hover:bg-[#19657a]">
                                 Explore AI Solutions
                             </Button>
                         </div>
@@ -418,7 +418,7 @@ export default function ProfilePage() {
                                                 ) : <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Auth" className="w-6 h-6" />}
                                                 <span className="font-bold text-sm text-slate-900">{user.email}</span>
                                             </div>
-                                            <span className="text-[10px] font-black uppercase text-[#165c52] bg-[#165c52]/10 px-2 py-1">Verified</span>
+                                            <span className="text-[10px] font-black uppercase text-[#19657a] bg-[#19657a]/10 px-2 py-1">Verified</span>
                                         </div>
                                     </div>
 

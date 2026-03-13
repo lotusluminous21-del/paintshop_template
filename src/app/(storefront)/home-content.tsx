@@ -1,5 +1,8 @@
+"use client";
+
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ChevronRight, Droplets, Target, ShieldCheck, Layers, Bot, ArrowRight } from 'lucide-react';
 import { CollectionCard } from '@/components/industrial_ui/CollectionCard';
 import { ServiceCard } from '@/components/industrial_ui/ServiceCard';
@@ -21,6 +24,12 @@ interface HomeContentProps {
 }
 
 export default function HomeContent({ initialProducts, initialCategories }: HomeContentProps) {
+    const router = useRouter();
+
+    const handleCategoryClick = (category: string) => {
+        router.push(`/categories?category=${encodeURIComponent(category)}`);
+    };
+
     return (
         <>
             {/* Hero Section */}
@@ -87,13 +96,14 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                     </FadeInUp>
                 </div>
 
-                <StaggerContainer staggerDelay={0.25} className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <StaggerContainer staggerDelay={0.25} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                     <FadeInUp inStaggerGroup>
                         <CollectionCard
                             title="Οικοδομικά Χρώματα"
                             description="Πλήρης γκάμα χρωμάτων για εσωτερικούς και εξωτερικούς χώρους με υψηλή κάλυψη και αντοχή."
                             image="/images/homescreen/building.webp"
                             variant="featured"
+                            onClick={() => handleCategoryClick('construction')}
                         />
                     </FadeInUp>
 
@@ -103,6 +113,7 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                             description="Επαγγελματικά χρώματα και προϊόντα φανοποιίας για τέλειο αποτέλεσμα σε κάθε επισκευή."
                             image="/images/homescreen/automotive.webp"
                             variant="featured"
+                            onClick={() => handleCategoryClick('automotive')}
                         />
                     </FadeInUp>
 
@@ -112,6 +123,17 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                             description="Εξειδικευμένα προϊόντα για σκάφη και θαλάσσιες εφαρμογές με αντοχή στο αλάτι και την υγρασία."
                             image="/images/homescreen/marine.webp"
                             variant="featured"
+                            onClick={() => handleCategoryClick('marine')}
+                        />
+                    </FadeInUp>
+
+                    <FadeInUp inStaggerGroup>
+                        <CollectionCard
+                            title="Ειδικές Εφαρμογές"
+                            description="Εξειδικευμένες λύσεις και υλικά για ιδιαίτερα project όπως πισίνες, βιομηχανικά δάπεδα και ειδικές επιφάνειες."
+                            image="/images/homescreen/special.webp"
+                            variant="featured"
+                            onClick={() => handleCategoryClick('special')}
                         />
                     </FadeInUp>
                 </StaggerContainer>
@@ -119,19 +141,19 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
 
             {/* AI Expert CTA Banner */}
             <section className="max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-10 py-16 md:py-24">
-                <StaggerContainer staggerDelay={0.1} viewportAmount={0.5} className="bg-[#0f4d44] text-white flex border border-transparent flex-col md:flex-row items-center justify-between p-6 sm:p-8 md:px-12 md:py-8 relative overflow-hidden shadow-lg">
+                <StaggerContainer staggerDelay={0.1} viewportAmount={0.5} className="bg-[#19657a] text-white flex border border-transparent flex-col md:flex-row items-center justify-between p-6 sm:p-8 md:px-12 md:py-8 relative overflow-hidden shadow-lg">
                     {/* Background Pattern */}
                     <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '16px 16px' }}></div>
-                    
+
                     <div className="flex flex-col md:flex-row items-center md:items-center gap-6 md:gap-8 relative z-10 w-full">
                         <FadeInUp className="flex-shrink-0 hidden sm:flex">
-                            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#0a352f] rounded-none flex items-center justify-center border border-white/10 shadow-inner">
+                            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#124a59] rounded-none flex items-center justify-center border border-white/10 shadow-inner">
                                 <Bot className="w-8 h-8 sm:w-10 sm:h-10 text-white opacity-90" />
                             </div>
                         </FadeInUp>
                         <div className="flex flex-col justify-center text-center md:text-left flex-1 min-w-0">
                             <FadeInUp>
-                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#0a352f] text-white border border-white/10 text-[10px] sm:text-xs font-bold uppercase tracking-widest rounded-sm mb-3 md:mb-2 mx-auto md:mx-0 w-fit">
+                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#124a59] text-white border border-white/10 text-[10px] sm:text-xs font-bold uppercase tracking-widest rounded-sm mb-3 md:mb-2 mx-auto md:mx-0 w-fit">
                                     <Bot className="w-3 h-3 sm:hidden" />
                                     <span>AI Assistant</span>
                                 </div>
@@ -148,7 +170,7 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                             </FadeInUp>
                         </div>
                         <FadeInUp className="mt-2 md:mt-0 flex-shrink-0 w-full md:w-auto self-center flex items-center">
-                            <Button asChild className="w-full md:w-auto rounded-none uppercase tracking-widest font-bold px-6 py-6 sm:px-8 sm:py-6 bg-white text-[#0f4d44] hover:bg-gray-100 shadow-xl group/btn transition-colors" size="lg">
+                            <Button asChild className="w-full md:w-auto rounded-none uppercase tracking-widest font-bold px-6 py-6 sm:px-8 sm:py-6 bg-white text-[#19657a] hover:bg-gray-100 shadow-xl group/btn transition-colors" size="lg">
                                 <Link href="/expert" className="flex items-center justify-center gap-2">
                                     Ρωτηστε τον Expert
                                     <ArrowRight className="w-4 h-4 transition-transform group-hover/btn:translate-x-1" />
@@ -181,7 +203,7 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                                         title="Τεχνική Συμβουλευτική"
                                         description="Καθοδήγηση στην επιλογή των κατάλληλων προϊόντων για οικοδομική, ναυτιλιακή ή αυτοκινητιστική χρήση."
                                         iconColor="accent"
-                                        className="!text-white [&_h4]:!text-white [&_h4]:hover:text-[#165c52] [&_p]:text-white/60"
+                                        className="!text-white [&_h4]:!text-white [&_h4]:hover:text-[#19657a] [&_p]:text-white/60"
                                     />
                                 </FadeInUp>
                                 <FadeInUp inStaggerGroup>
@@ -190,7 +212,7 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                                         title="Παρασκευή Αποχρώσεων"
                                         description="Custom αποχρώσεις σύμφωνα με τις ανάγκες σας, από δείγμα ή μοναδική ιδέα, στο εξειδικευμένο εργαστήριό μας."
                                         iconColor="accent"
-                                        className="!text-white [&_h4]:!text-white [&_h4]:hover:text-[#165c52] [&_p]:text-white/60"
+                                        className="!text-white [&_h4]:!text-white [&_h4]:hover:text-[#19657a] [&_p]:text-white/60"
                                     />
                                 </FadeInUp>
                                 <FadeInUp inStaggerGroup>
@@ -199,7 +221,7 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                                         title="Μελέτη Color Matching"
                                         description="Επαγγελματική αντιστοίχιση χρωμάτων με εξειδικευμένο εξοπλισμό για άψογο αποτέλεσμα."
                                         iconColor="accent"
-                                        className="!text-white [&_h4]:!text-white [&_h4]:hover:text-[#165c52] [&_p]:text-white/60"
+                                        className="!text-white [&_h4]:!text-white [&_h4]:hover:text-[#19657a] [&_p]:text-white/60"
                                     />
                                 </FadeInUp>
                                 <FadeInUp inStaggerGroup>
@@ -208,7 +230,7 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                                         title="Συμβουλές Χρωματισμού"
                                         description="Ιδανικοί χρωματικοί συνδυασμοί για τον χώρο σας, με βάση τις σύγχρονες τάσεις και τις ανάγκες σας."
                                         iconColor="accent"
-                                        className="!text-white [&_h4]:!text-white [&_h4]:hover:text-[#165c52] [&_p]:text-white/60"
+                                        className="!text-white [&_h4]:!text-white [&_h4]:hover:text-[#19657a] [&_p]:text-white/60"
                                     />
                                 </FadeInUp>
                             </StaggerContainer>
@@ -217,7 +239,7 @@ export default function HomeContent({ initialProducts, initialCategories }: Home
                             <div className="absolute inset-0 bg-cover bg-center grayscale border border-[#1e293b]"
                                 style={{ backgroundImage: 'url("/images/homescreen/services.webp")' }}>
                             </div>
-                            <FadeInUp inStaggerGroup delay={0.6} className="absolute -bottom-6 -left-6 bg-[#0f4d44] text-white p-6 z-10 hidden lg:block">
+                            <FadeInUp inStaggerGroup delay={0.6} className="absolute -bottom-6 -left-6 bg-[#19657a] text-white p-6 z-10 hidden lg:block">
                                 <p className="text-3xl font-black italic">44+</p>
                                 <p className="text-[10px] uppercase font-bold tracking-[0.2em]">Χρόνια Εμπειρίας</p>
                             </FadeInUp>

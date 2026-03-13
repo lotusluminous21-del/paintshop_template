@@ -24,7 +24,8 @@ export default function PipelineDrawer({
     // Pipeline Steps
     const steps = [
         { id: 'raw', title: 'Row Data Extraction', description: 'Raw Pylon CSV data ingested.' },
-        { id: 'metadata', title: 'Metadata & Variants', description: 'AI enrichment, Greek translation, and structuring.' },
+        { id: 'metadata', title: 'Metadata Generation', description: 'AI enrichment, Greek translation, and structuring.' },
+        { id: 'variants', title: 'Variant Resolution', description: 'Product variant discovery and structuring.' },
         { id: 'sourcing', title: 'Source Image Sourcing', description: 'Scraping target imagery.' },
         { id: 'studio', title: 'Studio Visuals Generation', description: 'Fal.ai context removal & Gemini Studio render.' },
     ];
@@ -70,8 +71,12 @@ export default function PipelineDrawer({
                 if (s === ProductState.GENERATING_METADATA) return 'loading';
                 if (s === ProductState.NEEDS_METADATA_REVIEW) return 'review';
                 return 'complete';
-            case 'sourcing':
+            case 'variants':
                 if ([ProductState.IMPORTED, ProductState.RAW_INGESTED, ProductState.BATCH_GENERATING, ProductState.GENERATING_METADATA, ProductState.NEEDS_METADATA_REVIEW].includes(s)) return 'pending';
+                if (s === ProductState.RESOLVING_VARIANTS) return 'loading';
+                return 'complete';
+            case 'sourcing':
+                if ([ProductState.IMPORTED, ProductState.RAW_INGESTED, ProductState.BATCH_GENERATING, ProductState.GENERATING_METADATA, ProductState.NEEDS_METADATA_REVIEW, ProductState.RESOLVING_VARIANTS].includes(s)) return 'pending';
                 if (s === ProductState.SOURCING_IMAGES || s === ProductState.REMOVING_SOURCE_BACKGROUND) return 'loading';
                 if (s === ProductState.NEEDS_IMAGE_REVIEW) return 'review';
                 return 'complete';
@@ -122,6 +127,7 @@ export default function PipelineDrawer({
     const [aiTitle, setAiTitle] = useState(product.ai_data?.title || "");
     const [aiBrand, setAiBrand] = useState(product.ai_data?.brand || "");
     const [aiDesc, setAiDesc] = useState(product.ai_data?.description || "");
+    const [aiType, setAiType] = useState(product.ai_data?.type === "Σπρέι Βαφής" ? "" : (product.ai_data?.type || ""));
     const [aiCategory, setAiCategory] = useState(product.ai_data?.category || "");
     const [aiTags, setAiTags] = useState<string[]>(product.ai_data?.tags || []);
     const [variants, setVariants] = useState<any[]>(product.ai_data?.variants || []);
@@ -131,30 +137,46 @@ export default function PipelineDrawer({
     const flaggedFields = product.ai_data?.flagged_fields || [];
     const isFlagged = (field: string) => flaggedFields.includes(field);
 
-    // Form sync on product change
+    // Flag to track if the current product has changed (to prevent wiping edits on background updates)
+    const prevProductIdRef = useRef(product.id);
+
+    // Form sync on product change - ONLY when product ID changes
     useEffect(() => {
-        setAiTitle(product.ai_data?.title || "");
-        setAiBrand(product.ai_data?.brand || "");
-        setAiDesc(product.ai_data?.description || "");
-        setAiCategory(product.ai_data?.category === "Σπρέι Βαφής" ? "" : (product.ai_data?.category || ""));
-        setAiTags(product.ai_data?.tags || []);
-        setVariants(product.ai_data?.variants || []);
-        setTechSpecs(product.ai_data?.technical_specs || {});
-    }, [product]);
+        if (prevProductIdRef.current !== product.id) {
+            setAiTitle(product.ai_data?.title || "");
+            setAiBrand(product.ai_data?.brand || "");
+            setAiDesc(product.ai_data?.description || "");
+            setAiType(product.ai_data?.type === "Σπρέι Βαφής" ? "" : (product.ai_data?.type || ""));
+            setAiCategory(product.ai_data?.category || "");
+            setAiTags(product.ai_data?.tags || []);
+            setVariants(product.ai_data?.variants || []);
+            setTechSpecs(product.ai_data?.technical_specs || {});
+            prevProductIdRef.current = product.id;
+        }
+    }, [product.id]);
+
+    // Derived "dirty" state
+    const isMetadataDirty = 
+        aiTitle !== (product.ai_data?.title || "") ||
+        aiBrand !== (product.ai_data?.brand || "") ||
+        aiDesc !== (product.ai_data?.description || "") ||
+        aiType !== (product.ai_data?.type === "Σπρέι Βαφής" ? "" : (product.ai_data?.type || "")) ||
+        aiCategory !== (product.ai_data?.category || "") ||
+        JSON.stringify(aiTags) !== JSON.stringify(product.ai_data?.tags || []) ||
+        JSON.stringify(techSpecs) !== JSON.stringify(product.ai_data?.technical_specs || {});
+
+    const isVariantsDirty = JSON.stringify(variants) !== JSON.stringify(product.ai_data?.variants || []);
 
     // Handlers
     const handleSaveMetadata = async () => {
         if (!db) return;
-
-        // Desync check: if we are rolling back from studio/sourcing due to a variant/metadata change
-        const isPastMetadata = ['sourcing', 'studio'].includes(steps.find(s => getStepState(s.id) === 'loading' || getStepState(s.id) === 'review' || getStepState(s.id) === 'complete')?.id || '');
-        const studioComplete = getStepState('studio') === 'complete';
 
         let targetStatus = product.status;
         let payload: any = {
             "ai_data.title": aiTitle,
             "ai_data.brand": aiBrand,
             "ai_data.description": aiDesc,
+            "ai_data.type": aiType,
             "ai_data.category": aiCategory,
             "ai_data.tags": aiTags,
             "ai_data.variants": variants,
@@ -163,16 +185,19 @@ export default function PipelineDrawer({
             enrichment_message: "Metadata manually approved & saved."
         };
 
+        const studioComplete = getStepState('studio') === 'complete';
+
         if (product.status === ProductState.NEEDS_METADATA_REVIEW) {
-            targetStatus = ProductState.SOURCING_IMAGES;
+            targetStatus = ProductState.RESOLVING_VARIANTS;
             payload.status = targetStatus;
-        } else if (studioComplete) {
-            // Warn about reroll
+        } else if (studioComplete && isMetadataDirty) {
+            // Warn about reroll only if metadata actually changed
             if (!confirm("Updating core metadata or variants will clear existing generated visuals and reroll them. Proceed?")) return;
 
             targetStatus = ProductState.GENERATING_STUDIO;
             payload.status = targetStatus;
             payload["ai_data.generated_images"] = deleteField();
+            payload["ai_data.images"] = deleteField();
             payload.enrichment_message = "Metadata modified. Re-rendering visuals...";
         }
 
@@ -190,7 +215,9 @@ export default function PipelineDrawer({
         try {
             await updateDoc(doc(db!, "staging_products", product.id), {
                 "ai_data.selected_images": { "base": url },
-                status: ProductState.GENERATING_STUDIO, // Wait, is it GENERATING_STUDIO or REMOVING_SOURCE_BACKGROUND? Model says Source Background Routing takes place. Actually, UtilityAgent handles it, controller handles NEEDS_IMAGE_REVIEW -> SOURCING_IMAGES.
+                "ai_data.generated_images": deleteField(),
+                "ai_data.images": deleteField(),
+                status: ProductState.GENERATING_STUDIO,
                 enrichment_message: "Source image approved. Beginning Studio Generation..."
             });
             // Actually, if we selected an image, we should probably do background removal first if we wanted to, but the current flow for manual url was straight to GENERATING_STUDIO. We'll keep it as GENERATING_STUDIO to match old behavior, or REMOVING_SOURCE_BACKGROUND if we want it to be cleaned. Let's send to GENERATING_STUDIO. User can reject later.
@@ -209,6 +236,10 @@ export default function PipelineDrawer({
             case 'metadata':
                 payload.status = ProductState.GENERATING_METADATA;
                 payload["ai_data"] = deleteField();
+                break;
+            case 'variants':
+                payload.status = ProductState.RESOLVING_VARIANTS;
+                payload["ai_data.variants"] = deleteField();
                 break;
             case 'sourcing':
                 payload.status = ProductState.SOURCING_IMAGES;
@@ -322,9 +353,9 @@ export default function PipelineDrawer({
 
                     {/* Global Status Message */}
                     {product.enrichment_message && (
-                        <div className="bg-white px-3 py-2 rounded-md border border-zinc-200 text-xs text-zinc-600 shadow-sm flex items-start gap-2">
+                        <div className="bg-white px-3 py-2 rounded-md border border-zinc-200 text-xs text-zinc-600 shadow-sm flex items-start gap-2 max-w-full overflow-hidden">
                             <Settings2 className="w-4 h-4 text-zinc-400 mt-0.5 shrink-0" />
-                            <span className="leading-relaxed">{product.enrichment_message}</span>
+                            <span className="leading-relaxed break-words whitespace-pre-wrap flex-1 min-w-0">{product.enrichment_message}</span>
                         </div>
                     )}
 
@@ -389,25 +420,25 @@ export default function PipelineDrawer({
                                                 <div className="space-y-4">
                                                     {/* Alerts */}
                                                     {product.status === ProductState.FAILED && getStepState('metadata') === 'review' && (
-                                                        <div className="flex items-start gap-2 p-2 bg-red-50 rounded text-red-800 text-xs border border-red-200">
+                                                        <div className="flex items-start gap-2 p-2 bg-red-50 rounded text-red-800 text-xs border border-red-200 max-w-full overflow-hidden">
                                                             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
-                                                            <p><strong>Generation Failed</strong> - The pipeline encountered an error while processing metadata.</p>
+                                                            <p className="flex-1 min-w-0 break-words"><strong>Generation Failed</strong> - The pipeline encountered an error while processing metadata.</p>
                                                         </div>
                                                     )}
                                                     {product.status === ProductState.NEEDS_METADATA_REVIEW && (
-                                                        <div className="flex items-start gap-2 p-2 bg-amber-50 rounded text-amber-800 text-xs border border-amber-200">
+                                                        <div className="flex items-start gap-2 p-2 bg-amber-50 rounded text-amber-800 text-xs border border-amber-200 max-w-full overflow-hidden">
                                                             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                                                            <p><strong>Low Confidence ({Math.round((product.ai_data?.confidence_score || 0) * 100)}%)</strong> - Please review.</p>
+                                                            <p className="flex-1 min-w-0 break-words"><strong>Low Confidence ({Math.round((product.ai_data?.confidence_score || 0) * 100)}%)</strong> - Please review.</p>
                                                         </div>
                                                     )}
 
                                                     {/* QA Reasoning Banner */}
                                                     {product.ai_data?.qa_reasoning && flaggedFields.length > 0 && (
-                                                        <div className="flex items-start gap-2 p-2 bg-amber-50 rounded text-amber-800 text-xs border border-amber-200">
+                                                        <div className="flex items-start gap-2 p-2 bg-amber-50 rounded text-amber-800 text-xs border border-amber-200 max-w-full overflow-hidden">
                                                             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                                                            <div>
-                                                                <p className="font-semibold">QA Review ({Math.round((product.ai_data?.confidence_score || 0) * 100)}% confidence)</p>
-                                                                <p className="mt-0.5 text-amber-700">{product.ai_data.qa_reasoning}</p>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="font-semibold break-words">QA Review ({Math.round((product.ai_data?.confidence_score || 0) * 100)}% confidence)</p>
+                                                                <p className="mt-0.5 text-amber-700 break-words">{product.ai_data.qa_reasoning}</p>
                                                             </div>
                                                         </div>
                                                     )}
@@ -427,26 +458,26 @@ export default function PipelineDrawer({
                                                             </label>
                                                             <Input value={aiBrand} onChange={e => setAiBrand(e.target.value)} className="h-8 text-xs" />
                                                         </div>
-                                                        <div className={cn("space-y-1", isFlagged('category') && "pl-2 border-l-2 border-amber-400")}>
+                                                        <div className={cn("space-y-1", isFlagged('type') && "pl-2 border-l-2 border-amber-400")}>
                                                             <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-                                                                Category
-                                                                {isFlagged('category') && <span className="w-1.5 h-1.5 bg-amber-400 rounded-full" />}
+                                                                Type
+                                                                {isFlagged('type') && <span className="w-1.5 h-1.5 bg-amber-400 rounded-full" />}
                                                             </label>
                                                             <div className="flex items-center gap-3">
                                                                 <div className="relative w-12 h-12 shrink-0">
                                                                     <NextImage
-                                                                        src={getCategoryImage(aiCategory)}
-                                                                        alt={aiCategory}
+                                                                        src={getCategoryImage(aiType)}
+                                                                        alt={aiType}
                                                                         fill
                                                                         className="object-contain drop-shadow-sm"
                                                                     />
                                                                 </div>
                                                                 <select
-                                                                    value={aiCategory}
-                                                                    onChange={e => setAiCategory(e.target.value)}
+                                                                    value={aiType}
+                                                                    onChange={e => setAiType(e.target.value)}
                                                                     className="flex h-8 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-1 text-xs ring-offset-white focus:outline-none focus:ring-1 focus:ring-zinc-950"
                                                                 >
-                                                                    <option value="">Επιλέξτε Κατηγορία</option>
+                                                                    <option value="">Επιλέξτε Τύπο</option>
                                                                     {[
                                                                         "Προετοιμασία & Καθαρισμός",
                                                                         "Αστάρια & Υποστρώματα",
@@ -458,6 +489,29 @@ export default function PipelineDrawer({
                                                                         "Διαλυτικά & Αραιωτικά",
                                                                         "Αξεσουάρ",
                                                                         "Άλλο"
+                                                                    ].map(cat => (
+                                                                        <option key={cat} value={cat}>{cat}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div className={cn("space-y-1", isFlagged('category') && "pl-2 border-l-2 border-amber-400")}>
+                                                            <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                                                                Project Category
+                                                                {isFlagged('category') && <span className="w-1.5 h-1.5 bg-amber-400 rounded-full" />}
+                                                            </label>
+                                                            <div className="flex items-center gap-3">
+                                                                <select
+                                                                    value={aiCategory}
+                                                                    onChange={e => setAiCategory(e.target.value)}
+                                                                    className="flex h-8 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-1 text-xs ring-offset-white focus:outline-none focus:ring-1 focus:ring-zinc-950"
+                                                                >
+                                                                    <option value="">Επιλέξτε Κατηγορία</option>
+                                                                    {[
+                                                                        "Αυτοκίνητο",
+                                                                        "Ναυτιλιακά",
+                                                                        "Οικοδομικά",
+                                                                        "Ειδικές Εφαρμογές"
                                                                     ].map(cat => (
                                                                         <option key={cat} value={cat}>{cat}</option>
                                                                     ))}
@@ -577,77 +631,6 @@ export default function PipelineDrawer({
                                                                 ))}
                                                             </div>
                                                         </div>
-
-                                                        {/* Variants Editor - Grouped by Axis */}
-                                                        <div className={cn("space-y-2 pt-2 border-t border-zinc-100", isFlagged('variants') && "pl-2 border-l-2 border-amber-400")}>
-                                                            <div className="flex items-center justify-between">
-                                                                <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
-                                                                    Variants ({variants.length})
-                                                                    {isFlagged('variants') && <span className="w-1.5 h-1.5 bg-amber-400 rounded-full" />}
-                                                                </label>
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="flex items-center gap-1 bg-zinc-100 rounded px-1.5 h-6 border border-zinc-200">
-                                                                        <span className="text-[9px] font-semibold text-zinc-500">BULK €:</span>
-                                                                        <Input type="number" step="0.01" className="h-4 w-12 text-[10px] p-0 bg-transparent border-none focus-visible:ring-0 shadow-none text-right" placeholder="0.00" onBlur={(e) => {
-                                                                            const val = parseFloat(e.target.value);
-                                                                            if (!isNaN(val)) {
-                                                                                setVariants(variants.map(v => ({ ...v, price: val })));
-                                                                                e.target.value = '';
-                                                                            }
-                                                                        }} />
-                                                                    </div>
-                                                                    <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={() => setVariants([...variants, { sku_suffix: '', variant_name: 'New Option', option1_name: 'Χρώμα', option1_value: '', price: product.pylon_data?.price_retail || 0 }])}>
-                                                                        <Plus className="w-3 h-3 mr-1" /> Add Variant
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                            <div className="space-y-3 max-h-[250px] overflow-y-auto pr-1">
-                                                                {/* Group variants by axis */}
-                                                                {(() => {
-                                                                    const axisGroups: Record<string, { axisName: string, items: { variant: any, originalIndex: number }[] }> = {};
-                                                                    variants.forEach((v, i) => {
-                                                                        const axis = v.option1_name || v.option2_name || 'Ungrouped';
-                                                                        if (!axisGroups[axis]) axisGroups[axis] = { axisName: axis, items: [] };
-                                                                        axisGroups[axis].items.push({ variant: v, originalIndex: i });
-                                                                    });
-
-                                                                    return Object.values(axisGroups).map(group => (
-                                                                        <div key={group.axisName} className="space-y-1.5">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">{group.axisName}</span>
-                                                                                <span className="text-[9px] bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded-full">{group.items.length}</span>
-                                                                            </div>
-                                                                            {group.items.map(({ variant: v, originalIndex: i }) => (
-                                                                                <div key={i} className="flex items-center gap-2 p-2 bg-zinc-50 border border-zinc-200 rounded-md">
-                                                                                    <div className="grid grid-cols-[1fr_1fr_65px] gap-2 flex-1">
-                                                                                        <Input value={v.sku_suffix} onChange={e => { const nv = [...variants]; nv[i].sku_suffix = e.target.value; setVariants(nv); }} placeholder="Suffix (e.g. -RED)" className="h-7 text-[10px] font-mono" />
-                                                                                        <Input value={v.option1_value || v.option2_value || ''} onChange={e => {
-                                                                                            const nv = [...variants];
-                                                                                            if (nv[i].option1_name) nv[i].option1_value = e.target.value;
-                                                                                            else if (nv[i].option2_name) nv[i].option2_value = e.target.value;
-                                                                                            setVariants(nv);
-                                                                                        }} placeholder="Option Value" className="h-7 text-[10px]" />
-                                                                                        <div className="relative">
-                                                                                            <span className="absolute left-2 text-[10px] text-zinc-400 top-1/2 -translate-y-1/2">€</span>
-                                                                                            <Input type="number" step="0.01" value={v.price ?? ''} onChange={e => {
-                                                                                                const nv = [...variants];
-                                                                                                nv[i].price = parseFloat(e.target.value) || 0;
-                                                                                                setVariants(nv);
-                                                                                            }} className="h-7 text-[10px] pl-4 pr-1" placeholder="0.00" />
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => {
-                                                                                        const nv = [...variants]; nv.splice(i, 1); setVariants(nv);
-                                                                                    }}>
-                                                                                        <Trash2 className="w-3 h-3" />
-                                                                                    </Button>
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    ));
-                                                                })()}
-                                                            </div>
-                                                        </div>
                                                     </div>
 
                                                     {/* Actions */}
@@ -655,9 +638,140 @@ export default function PipelineDrawer({
                                                         <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => handleRegenerate('metadata')}>
                                                             <RotateCcw className="w-3 h-3 mr-1.5" /> Reroll
                                                         </Button>
-                                                        {(getStepState('metadata') === 'review' || product.status === ProductState.FAILED) && (
+                                                        {(getStepState('metadata') === 'review' || product.status === ProductState.FAILED || isMetadataDirty) && (
                                                             <Button size="sm" className="flex-1 bg-zinc-900 text-white hover:bg-zinc-800 text-xs shadow-sm" onClick={handleSaveMetadata}>
-                                                                <CheckCircle2 className="w-3 h-3 mr-1.5" /> Save & Resume
+                                                                <CheckCircle2 className="w-3 h-3 mr-1.5" /> 
+                                                                {getStepState('metadata') === 'complete' ? "Save Changes" : "Save & Resume"}
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* --- VARIANTS STEP --- */}
+                                            {step.id === 'variants' && (
+                                                <div className="space-y-4">
+                                                    {/* Variants Editor - Grouped by Axis */}
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-1.5">
+                                                                Variants ({variants.length})
+                                                            </label>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="flex items-center gap-1 bg-zinc-100 rounded px-1.5 h-6 border border-zinc-200">
+                                                                    <span className="text-[9px] font-semibold text-zinc-500">BULK €:</span>
+                                                                    <Input type="number" step="0.01" className="h-4 w-12 text-[10px] p-0 bg-transparent border-none focus-visible:ring-0 shadow-none text-right" placeholder="0.00" onBlur={(e) => {
+                                                                        const val = parseFloat(e.target.value);
+                                                                        if (!isNaN(val)) {
+                                                                            setVariants(variants.map(v => ({ ...v, price: val })));
+                                                                            e.target.value = '';
+                                                                        }
+                                                                    }} />
+                                                                </div>
+                                                                <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={() => setVariants([...variants, { sku_suffix: '', variant_name: 'New Option', option1_name: 'Χρώμα', option1_value: '', price: product.pylon_data?.price_retail || 0 }])}>
+                                                                    <Plus className="w-3 h-3 mr-1" /> Add Variant
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                                                            {/* Group variants by axis */}
+                                                            {(() => {
+                                                                const axisGroups: Record<string, { axisName: string, items: { variant: any, originalIndex: number }[] }> = {};
+                                                                variants.forEach((v, i) => {
+                                                                    const axis = v.option1_name || v.option2_name || 'Ungrouped';
+                                                                    if (!axisGroups[axis]) axisGroups[axis] = { axisName: axis, items: [] };
+                                                                    axisGroups[axis].items.push({ variant: v, originalIndex: i });
+                                                                });
+
+                                                                return Object.values(axisGroups).map(group => (
+                                                                    <div key={group.axisName} className="space-y-1.5">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">{group.axisName}</span>
+                                                                            <span className="text-[9px] bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded-full">{group.items.length}</span>
+                                                                        </div>
+                                                                        {group.items.map(({ variant: v, originalIndex: i }) => (
+                                                                            <div key={i} className="flex items-center gap-2 p-2 bg-zinc-50 border border-zinc-200 rounded-md">
+                                                                                <div className="grid grid-cols-[1fr_1fr_65px] gap-2 flex-1">
+                                                                                    <Input value={v.sku_suffix} onChange={e => { const nv = [...variants]; nv[i].sku_suffix = e.target.value; setVariants(nv); }} placeholder="SKU / Suffix" className="h-7 text-[10px] font-mono" />
+                                                                                    <Input value={v.option1_value || v.option2_value || ''} onChange={e => {
+                                                                                        const nv = [...variants];
+                                                                                        if (nv[i].option1_name) nv[i].option1_value = e.target.value;
+                                                                                        else if (nv[i].option2_name) nv[i].option2_value = e.target.value;
+                                                                                        setVariants(nv);
+                                                                                    }} placeholder="Option Value" className="h-7 text-[10px]" />
+                                                                                    <div className="relative">
+                                                                                        <span className="absolute left-2 text-[10px] text-zinc-400 top-1/2 -translate-y-1/2">€</span>
+                                                                                        <Input type="number" step="0.01" value={v.price ?? ''} onChange={e => {
+                                                                                            const nv = [...variants];
+                                                                                            nv[i].price = parseFloat(e.target.value) || 0;
+                                                                                            setVariants(nv);
+                                                                                        }} className="h-7 text-[10px] pl-4 pr-1" placeholder="0.00" />
+                                                                                    </div>
+                                                                                </div>
+                                                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => {
+                                                                                    const nv = [...variants]; nv.splice(i, 1); setVariants(nv);
+                                                                                }}>
+                                                                                    <Trash2 className="w-3 h-3" />
+                                                                                </Button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                ));
+                                                            })()}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Pylon Source Variants (read-only reference) */}
+                                                    {product.pylon_data?.source_variants && product.pylon_data.source_variants.length > 0 && (
+                                                        <div className="space-y-1 pt-2 border-t border-zinc-100">
+                                                            <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Source Variants (Import)</label>
+                                                            <div className="bg-zinc-50 rounded-md border border-zinc-200 p-2 text-[9px] font-mono text-zinc-500 whitespace-pre-wrap overflow-x-auto max-h-[100px]">
+                                                                {product.pylon_data.source_variants.map((sv: any, i: number) => (
+                                                                    <div key={i} className="flex gap-2">
+                                                                        <span className="font-semibold">{sv.sku}</span>
+                                                                        <span>{sv.name}</span>
+                                                                        <span className="text-emerald-600">€{sv.price_retail}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Actions */}
+                                                    <div className="flex gap-2 pt-2 border-t border-zinc-100 mt-4">
+                                                        <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => handleRegenerate('variants')}>
+                                                            <RotateCcw className="w-3 h-3 mr-1.5" /> Reroll Variants
+                                                        </Button>
+                                                        {(getStepState('variants') === 'complete' ? isVariantsDirty : true) && (
+                                                            <Button size="sm" className="flex-1 bg-zinc-900 text-white hover:bg-zinc-800 text-xs shadow-sm" onClick={async () => {
+                                                                if (!db) return;
+                                                                try {
+                                                                    const studioComplete = getStepState('studio') === 'complete';
+                                                                    let payload: any = {
+                                                                        "ai_data.variants": variants,
+                                                                        enrichment_message: "Variants manually saved."
+                                                                    };
+
+                                                                    if (getStepState('variants') !== 'complete') {
+                                                                        payload.status = ProductState.SOURCING_IMAGES;
+                                                                        payload.enrichment_message = "Variants manually approved. Moving to Image Sourcing.";
+                                                                    } else if (studioComplete && isVariantsDirty) {
+                                                                        if (!confirm("Updating variants will clear existing generated visuals and reroll them. Proceed?")) return;
+                                                                        payload.status = ProductState.GENERATING_STUDIO;
+                                                                        payload["ai_data.generated_images"] = deleteField();
+                                                                        payload["ai_data.images"] = deleteField();
+                                                                        payload.enrichment_message = "Variants modified. Re-rendering visuals...";
+                                                                    }
+
+                                                                    await updateDoc(doc(db!, "staging_products", product.id), payload);
+                                                                    if (getStepState('variants') === 'complete') alert("Variants saved successfully.");
+                                                                } catch (e) {
+                                                                    console.error(e);
+                                                                    alert("Failed to save variants.");
+                                                                }
+                                                            }}>
+                                                                <CheckCircle2 className="w-3 h-3 mr-1.5" /> 
+                                                                {getStepState('variants') === 'complete' ? "Save Changes" : "Save & Continue"}
                                                             </Button>
                                                         )}
                                                     </div>
@@ -669,15 +783,15 @@ export default function PipelineDrawer({
                                                 <div className="space-y-4">
                                                     {/* Alerts */}
                                                     {product.status === ProductState.FAILED && getStepState('sourcing') === 'review' && (
-                                                        <div className="flex items-start gap-2 p-2 bg-red-50 rounded text-red-800 text-xs border border-red-200">
+                                                        <div className="flex items-start gap-2 p-2 bg-red-50 rounded text-red-800 text-xs border border-red-200 max-w-full overflow-hidden">
                                                             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
-                                                            <p><strong>Sourcing Failed</strong> - The pipeline failed while fetching or processing images. Please select a valid image manually.</p>
+                                                            <p className="flex-1 min-w-0 break-words"><strong>Sourcing Failed</strong> - The pipeline failed while fetching or processing images. Please select a valid image manually.</p>
                                                         </div>
                                                     )}
                                                     {product.status === ProductState.NEEDS_IMAGE_REVIEW && (
-                                                        <div className="flex items-start gap-2 p-2 bg-amber-50 rounded text-amber-800 text-xs border border-amber-200">
+                                                        <div className="flex items-start gap-2 p-2 bg-amber-50 rounded text-amber-800 text-xs border border-amber-200 max-w-full overflow-hidden">
                                                             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                                                            <p>No valid source images were automatically identified. Please select one or provide a URL.</p>
+                                                            <p className="flex-1 min-w-0 break-words">No valid source images were automatically identified. Please select one or provide a URL.</p>
                                                         </div>
                                                     )}
 
@@ -697,7 +811,10 @@ export default function PipelineDrawer({
                                                                                 )}
                                                                                 onClick={() => handleApproveImage(img.url)}
                                                                             >
-                                                                                <img src={img.url} className={cn("w-full h-full object-cover", isSelected ? "" : "opacity-80 group-hover:opacity-100")} />
+                                                                                 <img 
+                                                                                    src={`${img.url}${img.url.includes('?') ? '&' : '?'}v=${typeof product.updated_at === 'object' ? product.updated_at.seconds : Date.now()}`} 
+                                                                                    className={cn("w-full h-full object-cover", isSelected ? "" : "opacity-80 group-hover:opacity-100")} 
+                                                                                />
                                                                                 {/* Zoom icon — opens lightbox without selecting */}
                                                                                 <button
                                                                                     className="absolute top-1 left-1 p-1 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70 z-10"
@@ -723,7 +840,10 @@ export default function PipelineDrawer({
                                                                             className="aspect-square bg-zinc-100 rounded border border-emerald-500 ring-2 ring-emerald-500 shadow-sm overflow-hidden relative cursor-pointer group"
                                                                             onClick={() => setLightboxSrc(product.ai_data?.selected_images?.base || null)}
                                                                         >
-                                                                            <img src={product.ai_data?.selected_images?.base} className="w-full h-full object-cover" />
+                                                                             <img 
+                                                                                src={`${product.ai_data?.selected_images?.base}${product.ai_data?.selected_images?.base?.includes('?') ? '&' : '?'}v=${typeof product.updated_at === 'object' ? product.updated_at.seconds : Date.now()}`} 
+                                                                                className="w-full h-full object-cover" 
+                                                                            />
                                                                             <div className="absolute top-1 right-1 bg-emerald-500 rounded-full p-0.5 shadow-sm">
                                                                                 <CheckCircle2 className="w-3 h-3 text-white" />
                                                                             </div>
@@ -834,7 +954,10 @@ export default function PipelineDrawer({
                                                                                         className="aspect-square bg-zinc-100 rounded-lg border border-zinc-200 overflow-hidden relative cursor-pointer group"
                                                                                         onClick={() => setLightboxSrc(url)}
                                                                                     >
-                                                                                        <img src={url} className="w-full h-full object-cover" />
+                                                                                         <img 
+                                                                                            src={`${url}${url.includes('?') ? '&' : '?'}v=${typeof product.updated_at === 'object' ? product.updated_at.seconds : Date.now()}`} 
+                                                                                            className="w-full h-full object-cover" 
+                                                                                        />
                                                                                         <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                                                             <ZoomIn className="w-5 h-5 text-white" />
                                                                                         </div>
@@ -874,7 +997,7 @@ export default function PipelineDrawer({
                 </div>
 
                 {/* Drawer Footer Actions */}
-                <div className="p-4 border-t border-red-100 bg-white shadow-sm">
+                <div className="p-4 pb-24 border-t border-red-100 bg-white shadow-sm shrink-0 z-10 w-full relative">
                     <Button variant="outline" className="w-full text-red-600 border-red-200 hover:bg-red-50 text-xs font-semibold h-9" onClick={() => {
                         if (confirm(`Irreversibly delete product ${product.sku}?`)) {
                             deleteDoc(doc(db!, "staging_products", product.id));

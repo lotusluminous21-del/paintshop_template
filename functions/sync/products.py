@@ -151,9 +151,29 @@ def _validate_product_data(sku: str, ai: dict, pylon: dict) -> list:
         # At least one option must be defined
         has_option = any(v.get(f"option{j}_name") and v.get(f"option{j}_value") for j in range(1, 4))
         if not has_option:
+            # This should ideally be caught and fixed by _fix_missing_variant_options before validation
             errors.append(f"Variant [{i}] '{v.get('variant_name', '?')}' has no option name/value pairs")
 
     return errors
+
+
+def _fix_missing_variant_options(ai: dict):
+    """
+    Ensures every variant has at least one option name/value pair.
+    If missing, it uses the variant_name or sku_suffix as a fallback.
+    """
+    variants = ai.get("variants", [])
+    if not variants:
+        return
+
+    for v in variants:
+        has_option = any(v.get(f"option{j}_name") and v.get(f"option{j}_value") for j in range(1, 4))
+        if not has_option:
+            # Fallback: Use variant_name or SKU suffix as Option 1
+            fallback_value = v.get("variant_name") or v.get("sku_suffix", "").replace("-", "") or "Default"
+            v["option1_name"] = "Επιλογή"
+            v["option1_value"] = fallback_value
+            logger.info(f"Fixed missing options for variant: {fallback_value}")
 
 
 def _recover_stuck_publishing(db):
@@ -280,6 +300,9 @@ async def sync_products_job():
                 logger.info(f"Product {sku} found in Shopify (ID: {existing_shopify_id}). Will UPDATE.")
 
         is_update = bool(existing_shopify_id)
+
+        # --- Fix missing variant options (Robustness) ---
+        _fix_missing_variant_options(ai)
 
         # --- Pre-flight Validation ---
         validation_errors = _validate_product_data(sku, ai, pylon)

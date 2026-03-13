@@ -19,6 +19,8 @@ EXCLUDE_PATTERNS = [
     r'payment', r'visa', r'mastercard', r'paypal',
     r'\.svg', r'\.gif', r'data:image',
     r'1x1', r'spacer', r'blank', r'transparent',
+    r'ghs-label', r'pictogram', r'hazardous', r'clp-', r'pict-09',
+    r'cms', r'pylon', r'icon-', r'logo-', r'banner-', r'nav-',
 ]
 
 EXCLUDE_REGEX = re.compile('|'.join(EXCLUDE_PATTERNS), re.IGNORECASE)
@@ -29,7 +31,7 @@ class ContentExtractor:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
-    def fetch_images_from_urls(self, urls: List[str], limit: int = 8) -> List[str]:
+    def fetch_images_from_urls(self, urls: List[str], limit: int = 8, product_context: Optional[str] = None) -> List[str]:
         """
         Visits the provided URLs and extracts high-quality product images.
         Uses a multi-strategy approach: og:image, twitter:image, and full <img> tag parsing.
@@ -37,24 +39,34 @@ class ContentExtractor:
         """
         found_images = []
         
-        logger.info(f"ContentExtractor: Extracting images from {len(urls)} sources...")
+        logger.info(f"ContentExtractor: Extracting images from {len(urls)} sources (context: {product_context})...")
 
         with requests.Session() as session:
             session.headers.update(self.headers)
             
             for url in urls[:limit]:
                 try:
+                    # HEURISTIC: If the URL already looks like a direct image, add it immediately
+                    if any(url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                        found_images.append(url)
+                        continue
+
                     logger.info(f"ContentExtractor: Fetching {url}...")
                     response = session.get(url, timeout=12.0, allow_redirects=True, verify=False)
                     response.raise_for_status()
                     
+                    # If the content-type is already an image, add it
+                    if 'image' in response.headers.get('Content-Type', '').lower():
+                        found_images.append(response.url)
+                        continue
+
                     logger.info(f"ContentExtractor: Resolved to {response.url}")
                     
-                    images = self._extract_all_images(response.text, response.url)
+                    images = self._extract_all_images(response.text, response.url, product_context=product_context)
                     logger.info(f"ContentExtractor: Found {len(images)} candidate images on page.")
                     found_images.extend(images)
                     
-                    if len(found_images) >= 10:
+                    if len(found_images) >= 15: # Increased to provide a richer pool for Multimodal QA
                         break
                         
                 except Exception as e:
@@ -66,103 +78,63 @@ class ContentExtractor:
         logger.info(f"ContentExtractor: Total unique images found: {len(unique)}")
         return unique
 
-    def _extract_all_images(self, html_content: str, base_url: str) -> List[str]:
+    def _extract_all_images(self, html_content: str, base_url: str, product_context: Optional[str] = None) -> List[str]:
         """
         Multi-strategy image extraction from HTML content.
         Priority: og:image > twitter:image > large <img> tags
         """
         images = []
         
-        # ── 1. Open Graph Images (highest priority) ──────────────────
-        # Handle both attribute orders: property then content, and content then property
-        og_matches = re.findall(
-            r'<meta\s+(?:[^>]*?)(?:property=["\']og:image["\'][^>]*?content=["\']([^"\']+)["\']|content=["\']([^"\']+)["\'][^>]*?property=["\']og:image["\'])',
-            html_content, re.IGNORECASE
-        )
-        for match_group in og_matches:
-            url = match_group[0] or match_group[1]
-            if url:
-                images.append(urljoin(base_url, url))
-        
-        # ── 2. Twitter Image ─────────────────────────────────────────
-        twitter_matches = re.findall(
-            r'<meta\s+(?:[^>]*?)(?:name=["\']twitter:image["\'][^>]*?content=["\']([^"\']+)["\']|content=["\']([^"\']+)["\'][^>]*?name=["\']twitter:image["\'])',
-            html_content, re.IGNORECASE
-        )
-        for match_group in twitter_matches:
-            url = match_group[0] or match_group[1]
-            if url:
-                images.append(urljoin(base_url, url))
+        # ── Context Awareness ──────────────────────────────────────
+        # Create a set of relevant keywords from the product context (e.g. brand, product name)
+        keywords = []
+        if product_context:
+            # Clean and split context into significant keywords
+            clean_context = re.sub(r'[^\w\s]', ' ', product_context.lower())
+            keywords = [k for k in clean_context.split() if len(k) > 2]
 
-        # ── 3. Link rel="image_src" ──────────────────────────────────
-        link_matches = re.findall(
-            r'<link\s+(?:[^>]*?)(?:rel=["\']image_src["\'][^>]*?href=["\']([^"\']+)["\']|href=["\']([^"\']+)["\'][^>]*?rel=["\']image_src["\'])',
-            html_content, re.IGNORECASE
-        )
-        for match_group in link_matches:
-            url = match_group[0] or match_group[1]
-            if url:
-                images.append(urljoin(base_url, url))
-        
-        # ── 4. Regular <img> tags (src and data-src) ─────────────────
-        # This is the main fix — most product pages use regular <img> tags
-        img_tag_matches = re.findall(
-            r'<img\s+[^>]*?(?:src|data-src)\s*=\s*["\']([^"\']+)["\']',
-            html_content, re.IGNORECASE
-        )
-        
-        for img_url in img_tag_matches:
-            full_url = urljoin(base_url, img_url)
-            
-            # Skip excluded patterns (icons, logos, tracking pixels, etc.)
+        def is_relevant(url: str) -> bool:
+            if not keywords: return True
+            url_lower = url.lower()
+            # If at least one unique keyword from the product name is in the URL, it's highly likely relevant
+            return any(k in url_lower for k in keywords)
+
+        # Helper to add image while filtering
+        def add_image(url: str):
+            full_url = urljoin(base_url, url)
             if EXCLUDE_REGEX.search(full_url):
-                continue
-
-            # Skip tiny images by checking for dimension hints in the URL
-            if self._is_likely_small_image(full_url, html_content, img_url):
-                continue
-            
-            # Must be http/https
+                return
             if not full_url.startswith(('http://', 'https://')):
-                continue
+                return
             
-            # Must look like an image URL
+            # ELIMINATE RELEVANCE FILTERING AT EXTRACTION STAGE
+            # We trust the downstream Multimodal Vision Agent to discard irrelevant images.
+            # Only block explicit logo/icon assets to save bandwidth/noise.
+            url_lower = full_url.lower()
+            if any(x in url_lower for x in ['/logo', '/icon', '/sprite', '/favicon']):
+                return
+            
+            # Simple extension check
             parsed = urlparse(full_url)
             path_lower = parsed.path.lower()
             if any(ext in path_lower for ext in ['.jpg', '.jpeg', '.png', '.webp']):
                 images.append(full_url)
-            elif '/image' in path_lower or '/img' in path_lower or '/photo' in path_lower or '/media' in path_lower or '/product' in path_lower:
-                images.append(full_url)
-            elif '?' in full_url and any(ext in full_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
-                # URL with query params but still has image extension
-                images.append(full_url)
 
-        # ── 5. srcset parsing (responsive images) ────────────────────
-        srcset_matches = re.findall(r'srcset\s*=\s*["\']([^"\']+)["\']', html_content, re.IGNORECASE)
-        for srcset in srcset_matches:
-            # srcset format: "url1 300w, url2 600w, url3 1200w"
-            parts = srcset.split(',')
-            best_url = None
-            best_width = 0
-            for part in parts:
-                part = part.strip()
-                tokens = part.split()
-                if len(tokens) >= 1:
-                    candidate_url = tokens[0]
-                    width = 0
-                    if len(tokens) >= 2 and tokens[1].endswith('w'):
-                        try:
-                            width = int(tokens[1][:-1])
-                        except ValueError:
-                            width = 0
-                    if width > best_width:
-                        best_width = width
-                        best_url = candidate_url
-            
-            if best_url and best_width >= MIN_IMAGE_DIMENSION:
-                full_url = urljoin(base_url, best_url)
-                if not EXCLUDE_REGEX.search(full_url):
-                    images.append(full_url)
+        # ── Apply Strategies ──────────────────────────────────────────
+        
+        # 1 & 2 & 3: Meta tags
+        meta_imgs = re.findall(r'<meta[^>]*?(?:property|name)=["\'](?:og:image|twitter:image|image_src)["\'][^>]*?content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+        meta_imgs += re.findall(r'<meta[^>]*?content=["\']([^"\']+)["\'][^>]*?(?:property|name)=["\'](?:og:image|twitter:image|image_src)["\']', html_content, re.IGNORECASE)
+        for img in meta_imgs:
+            add_image(img)
+
+        # 4: <img> tags
+        img_tags = re.findall(r'<img[^>]*?(?:src|data-src)=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+        for img in img_tags:
+            # Check dimensions if possible via attributes
+            if self._is_likely_small_image(img, html_content, img):
+                continue
+            add_image(img)
 
         return images
     
@@ -171,23 +143,29 @@ class ContentExtractor:
         # Check for dimension patterns in URL (e.g., 50x50, 16x16)
         dim_match = re.search(r'(\d+)x(\d+)', url)
         if dim_match:
-            w, h = int(dim_match.group(1)), int(dim_match.group(2))
-            if w < MIN_IMAGE_DIMENSION or h < MIN_IMAGE_DIMENSION:
-                return True
+            try:
+                w, h = int(dim_match.group(1)), int(dim_match.group(2))
+                if w < MIN_IMAGE_DIMENSION or h < MIN_IMAGE_DIMENSION:
+                    return True
+            except:
+                pass
         
         # Check for width/height attributes near the img tag in HTML
-        escaped_src = re.escape(original_src)
-        context_match = re.search(
-            rf'<img[^>]*?(?:src|data-src)\s*=\s*["\']' + escaped_src + r'["\'][^>]*?>',
-            html, re.IGNORECASE
-        )
-        if context_match:
-            tag = context_match.group(0)
-            w_match = re.search(r'width\s*=\s*["\']?(\d+)', tag, re.IGNORECASE)
-            h_match = re.search(r'height\s*=\s*["\']?(\d+)', tag, re.IGNORECASE)
-            if w_match and int(w_match.group(1)) < MIN_IMAGE_DIMENSION:
-                return True
-            if h_match and int(h_match.group(1)) < MIN_IMAGE_DIMENSION:
-                return True
+        try:
+            escaped_src = re.escape(original_src)
+            context_match = re.search(
+                rf'<img[^>]*?(?:src|data-src)\s*=\s*["\']' + escaped_src + r'["\'][^>]*?>',
+                html, re.IGNORECASE
+            )
+            if context_match:
+                tag = context_match.group(0)
+                w_match = re.search(r'width\s*=\s*["\']?(\d+)', tag, re.IGNORECASE)
+                h_match = re.search(r'height\s*=\s*["\']?(\d+)', tag, re.IGNORECASE)
+                if w_match and int(w_match.group(1)) < MIN_IMAGE_DIMENSION:
+                    return True
+                if h_match and int(h_match.group(1)) < MIN_IMAGE_DIMENSION:
+                    return True
+        except:
+            pass
         
         return False

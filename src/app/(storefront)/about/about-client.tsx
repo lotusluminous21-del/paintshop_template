@@ -181,7 +181,7 @@ export default function AboutClient() {
             </section>
 
             {/* ───── CTA Section ───── */}
-            <section className="py-16 md:py-24 bg-[#0f4d44]">
+            <section className="py-16 md:py-24 bg-[#19657a]">
                 <div className="max-w-4xl mx-auto px-6 md:px-10 text-center">
                     <FadeInUp>
                         <h2 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase tracking-tighter mb-8 leading-tight text-white">

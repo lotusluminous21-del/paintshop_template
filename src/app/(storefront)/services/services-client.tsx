@@ -37,7 +37,7 @@ export default function ServicesClient() {
                         <IndexedFadeInUp index={1}>
                             <h1 className="text-5xl sm:text-6xl md:text-7xl font-black text-white leading-[0.9] tracking-tighter uppercase">
                                 Οι Υπηρεσίες <br />
-                                <span className="text-[#165c52]">μας</span>
+                                <span className="text-[#19657a]">μας</span>
                             </h1>
                         </IndexedFadeInUp>
 
@@ -146,7 +146,7 @@ export default function ServicesClient() {
                             title: 'Βιομηχανικές & Ειδικές Εφαρμογές',
                             description: 'Εξειδικευμένες λύσεις για δάπεδα, πισίνες, μεταλλικές κατασκευές και κάθε ιδιαίτερη εφαρμογή.',
                             linkLabel: 'Δείτε Λύσεις',
-                            hoverColor: 'group-hover:text-[#165c52]',
+                            hoverColor: 'group-hover:text-[#19657a]',
                         },
                         {
                             icon: <Target className="w-10 h-10" />,
@@ -202,7 +202,7 @@ export default function ServicesClient() {
                             className="object-cover grayscale"
                             sizes="(max-width: 768px) 100vw, 50vw"
                         />
-                        <div className="absolute inset-0 bg-[#165c52]/10 mix-blend-multiply" />
+                        <div className="absolute inset-0 bg-[#19657a]/10 mix-blend-multiply" />
                     </div>
 
                     {/* Right Content */}

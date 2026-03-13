@@ -107,7 +107,7 @@ export async function publishProductAction(sku: string, productData: any) {
         title: productData.ai_data?.title_el || remoteProduct?.title || productData.pylon_data?.name || productData.sku,
         body_html: enrichedDescription,
         vendor: remoteProduct?.vendor || "Nano Studio",
-        product_type: remoteProduct?.product_type || productData.ai_data?.category || "Hardware",
+        product_type: remoteProduct?.product_type || productData.ai_data?.type || "Hardware",
         tags: remoteProduct?.tags
             ? Array.from(new Set([...remoteProduct.tags.split(', '), ...(productData.ai_data?.tags || []), "StagingApproved", "NanoLab"])).join(', ')
             : [...(productData.ai_data?.tags || []), "StagingApproved", "NanoLab"],
@@ -118,6 +118,17 @@ export async function publishProductAction(sku: string, productData: any) {
             ? [{ name: productData.ai_data.variants[0].option_name, values: productData.ai_data.variants.map((v: any) => v.option_value) }]
             : []
     };
+
+    if (productData.ai_data?.category) {
+        shopifyPayload.metafields = [
+            {
+                namespace: "pavlicevits",
+                key: "category",
+                value: productData.ai_data.category,
+                type: "single_line_text_field"
+            }
+        ];
+    }
 
     // Images: If remote has images and Lab doesn't provide new ones, keep remote; otherwise prefer Lab (Mirror Storefront design)
     let imagesToSync: { url: string; suffix?: string }[] = [];

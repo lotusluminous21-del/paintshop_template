@@ -1,14 +1,15 @@
-import time
-import requests
-import random
-import base64
 from firebase_admin import firestore
+import requests
+import base64
+import random
+import time
+from google.auth import default, transport
 
 from core.llm_config import LLMConfig, ModelName
 from core.logger import get_logger
 from ..models import ProductState
 from ..image_utils import normalize_product_image
-from .metadata_agent import MetadataAgent
+from .metadata_agent import MetadataAgent, generate_with_retry
 
 logger = get_logger(__name__)
 
@@ -22,6 +23,17 @@ class VisionAgent:
         sku = data.get("sku", "")
         ai_data = data.get("ai_data", {})
         existing_images = ai_data.get("variant_images", {}).get("base", [])
+
+        # --- PROTECTION: Do not overwrite if a user has already manually selected or uploaded an image ---
+        selected_images = ai_data.get("selected_images", {})
+        current_base = selected_images.get("base")
+        if current_base:
+            logger.info(f"VisionAgent: Skipping automatic sourcing for {sku}. User has already selected a source image.")
+            doc_ref.update({
+                "status": ProductState.GENERATING_STUDIO.value if not data.get("search_query") else ProductState.NEEDS_IMAGE_REVIEW.value,
+                "enrichment_message": "Preserving user-selected image. Advancing pipeline."
+            })
+            return
 
         if existing_images:
             if len(existing_images) == 1:
@@ -79,28 +91,42 @@ class VisionAgent:
                 })
                 return
 
-            prompt = f"""You are a strict Data Quality Assurance AI for an e-commerce platform.
+            prompt = f"""You are a strict Data Quality Assurance AI for a premium e-commerce platform.
 You are evaluating {len(valid_urls)} candidate images for a specific product.
 Product Title: {ai_data.get('title', 'Unknown')}
+Brand: {ai_data.get('brand', 'Unknown')}
 Category: {ai_data.get('category', 'Unknown')}
 
-Your job is to select the BEST single image to be used as the source for downstream 3D studio generation.
+Your job is to select the BEST single image to be used as the source for downstream studio generation.
+
+CRITICAL REJECTION CRITERIA:
+- REJECT any image that is just a BRAND LOGO.
+- REJECT any image that is a CLP/GHS HAZARD PICTOGRAM (e.g. flame, toxic, corrosive, environment icons).
+- REJECT any image that is a technical diagram, chemical symbol, or navigation asset.
+- REJECT images with significant text overlays that obscure the product.
+
+STRICT IDENTITY MATCHING:
+- The image MUST clearly show the product described: "{ai_data.get('title', 'Unknown')}"
+- The BRAND "{ai_data.get('brand', 'Unknown')}" MUST be visible or clearly implied by the packaging.
+- Favor "Packshots" (product on pure white background).
 Criteria for the BEST image:
-1. Highest resolution and sharpness.
-2. Complete isolation (a clear shot of the single product, preferably on a white/clean background).
-3. NO heavy text overlays, promotional banners, or thick watermarks crossing the product.
-4. IDENTITY MATCH: The label on the product MUST accurately match the provided Product Title. Reject generic or incorrect products.
+1. IDENTITY MATCH: The label on the product MUST accurately match the provided Product Title and Brand. REJECT images of unrelated products.
+2. Highest resolution and sharpness.
+3. Complete isolation (a clear shot of the single product, preferably on a white/clean background).
+4. NO heavy text overlays, promotional banners, or thick watermarks crossing the product.
 
 Analyze the provided images (labeled with their indices).
 Output valid JSON complying with the schema provided.
 - `best_index`: The integer index of the winning image.
-- `confidence`: A float between 0.0 and 1.0 indicating how confident you are that this image is clean, correct, and high quality.
-- `reasoning`: A brief explanation of why you chose this image over the others, or why confidence is low.
+- `confidence`: A float between 0.0 and 1.0. If NO image matches the identity (wrong brand or product), set confidence to 0.0.
+- `reasoning`: A brief explanation. If rejecting all, state why.
 """
 
             try:
-                response = client.models.generate_content(
-                    model=LLMConfig.get_model_name(complex=False),
+                # Use retry helper to defend against 429s during QA
+                response = generate_with_retry(
+                    client=client,
+                    model_name=LLMConfig.get_model_name(complex=True),
                     contents=[
                         types.Content(role="user", parts=[types.Part.from_text(text=prompt)] + image_parts)
                     ],
@@ -116,14 +142,13 @@ Output valid JSON complying with the schema provided.
                             },
                             "required": ["best_index", "confidence", "reasoning"]
                         }
-                    )
+                    ),
+                    sku=sku
                 )
-
-                result_text = response.text
-                if result_text.startswith("```json"):
-                    result_text = result_text.replace("```json\n", "").replace("\n```", "")
-                
-                qa_data = json.loads(result_text)
+                if not response or not response.text:
+                    raise Exception("VisionAgent: Empty response from QA model.")
+                    
+                qa_data = json.loads(response.text)
                 best_idx = qa_data.get("best_index", 0)
                 confidence = qa_data.get("confidence", 0.0)
                 reasoning = qa_data.get("reasoning", "")
@@ -134,7 +159,7 @@ Output valid JSON complying with the schema provided.
                 if best_idx < 0 or best_idx >= len(valid_urls):
                     best_idx = 0
 
-                if confidence >= 0.70:
+                if confidence >= 0.75:
                     doc_ref.update({
                         "status": ProductState.GENERATING_STUDIO.value,
                         "ai_data.selected_images": {"base": valid_urls[best_idx]},
@@ -143,8 +168,8 @@ Output valid JSON complying with the schema provided.
                 else:
                     doc_ref.update({
                         "status": ProductState.NEEDS_IMAGE_REVIEW.value,
-                        "ai_data.selected_images": {"base": valid_urls[best_idx]}, # Pre-fill the best guess
-                        "enrichment_message": f"QA Flagged (Confidence {int(confidence*100)}%): {reasoning} - Review needed."
+                        "ai_data.selected_images": {"base": valid_urls[best_idx]} if confidence > 0.3 else firestore.DELETE_FIELD,
+                        "enrichment_message": f"QA Validation Failed (Confidence {int(confidence*100)}%): {reasoning} - Manual review required."
                     })
                 return
 
@@ -180,43 +205,21 @@ Output valid JSON complying with the schema provided.
             raise e
 
     @staticmethod
-    def _generate_with_retry(client, model, contents, config, retries=6, initial_delay=4.0):
-        """Wraps Gemini generate_content with exponential backoff for 429 errors."""
-        delay = initial_delay
-        for attempt in range(retries + 1):
-            try:
-                return client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=config
-                )
-            except Exception as e:
-                error_str = str(e)
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                    if attempt < retries:
-                        sleep_time = delay + random.uniform(1.0, 4.0) # Add larger jitter
-                        logger.warning(f"Rate limited (429). Retrying in {sleep_time:.2f}s... (Attempt {attempt+1}/{retries})")
-                        time.sleep(sleep_time)
-                        delay = min(delay * 2.0, 60.0) # Exponential backoff with cap
-                        continue
-                raise e
-
-    @staticmethod
     def generate_studio(doc_ref, data: dict):
         sku = data.get("sku", "")
         ai_data = data.get("ai_data", {})
         
         selected_images = ai_data.get("selected_images", {})
         source_url = selected_images.get("base")
-        if not source_url and selected_images:
-            first_key = next(iter(selected_images))
-            source_url = selected_images[first_key]
-            
+        
+        # --- STRICT SELECTION: Only proceed if there is a 'base' image ---
         if not source_url:
-            logger.error(f"VisionAgent: Studio generation triggered for {sku} without a source image.")
+            logger.error(f"VisionAgent: Studio generation triggered for {sku} without a defined 'base' source image.")
+            # If there's NO base, but we HAVE selected_images, maybe it was a variant?
+            # Still, for base STUDIO, we MUST have a base image.
             doc_ref.update({
                 "status": ProductState.NEEDS_IMAGE_REVIEW.value,
-                "enrichment_message": "Missing source image. Provide one to resume."
+                "enrichment_message": "Missing 'base' source image. Please select one explicitly to begin studio generation."
             })
             return
 
@@ -236,45 +239,45 @@ Output valid JSON complying with the schema provided.
         elif finish_raw in ["Μεταλλικό", "Πέρλα"]:
             finish_instruction = "The contextual surfaces and ambient accents MUST feature a sparkling, metallic finish infused with micro-reflective pearlescent flakes that catch the light dynamically."
         
-        # Brand palette for ambient lighting — petrol green DOMINATES the scene
-        color_instruction = "FLOOD the entire scene atmosphere with a strong, saturated dark petrol green (#165c52) color cast — it must be the dominant mood color visible in the backdrop haze, surface reflections, and rim lighting. Use deep navy-black (#0d1117) for the darkest shadows to create extreme contrast. The petrol green must be unmistakably present and recognizable as the brand signature color. Do NOT sample colors from the product label. "
+        # Brand palette for ambient lighting — dark blue-green petrol sets the premium studio mood
+        color_instruction = "Bathe the entire scene atmosphere with a rich, dark blue-green petrol (#165c52) color cast — it must be the dominant mood color visible in the subtle backdrop haze, surface reflections, and rim lighting. Use deep navy-black (#0d1117) for the darkest shadows to highlight the physical texture of the materials. The dark blue-green petrol must be unmistakably present and recognizable as the brand signature color. Do NOT sample colors from the product label. "
         if finish_instruction:
             color_instruction += finish_instruction
             
-        # Category-specific real-world contextual elements — BOLD and dramatic
-        decorative_effect = "a massive slab of fractured raw concrete with exposed steel rebar and rough aggregate, dramatically side-lit to reveal deep texture; thick volumetric petrol-green-tinted fog rolling through the background"
+        # Category-specific real-world contextual elements — Material and Quality Focused
+        decorative_effect = "a slab of raw concrete with exposed aggregate, elegantly lit to reveal its deep physical texture and premium quality; subtle dark blue-green petrol tinted ambient haze in the background"
         
         if category == "Χρώματα Βάσης":
-            decorative_effect = "a dramatic cascade of thick, high-viscosity wet paint pouring and pooling around the product's base in the product's own pigment color — visible glossy drip trails, heavy paint rivulets, and a wide spreading puddle catching sharp studio reflections"
+            decorative_effect = "a beautiful display of thick, high-viscosity wet paint subtly pooled around the product's base in its own pigment color — highlighting the rich, creamy texture and premium quality of the paint as a decorative material"
         elif category == "Βερνίκια & Φινιρίσματα":
-            decorative_effect = "a jet-black mirror-finish acrylic pedestal reflecting the product with crystalline clarity; intense caustic light patterns from a hidden light source dancing across the reflective surface, creating dramatic bright-to-dark contrast"
+            decorative_effect = "a smoothly finished wood or acrylic pedestal reflecting the product, lit to emphasize the flawless, high-quality protective finish and depth of the material"
         elif category == "Στόκοι & Πλαστελίνες":
-            decorative_effect = "a cracked, heavily textured concrete block with deep fissures revealing raw substrate layers; a thick spread of fresh filler compound applied with visible trowel marks on one face; clouds of fine powder dust suspended and dramatically backlit"
+            decorative_effect = "a textured surface with a smooth, perfectly applied spread of fresh filler compound showing elegant trowel marks; lit to emphasize the fine, premium granular texture of the material"
         elif category == "Πινέλα & Εργαλεία":
-            decorative_effect = "thick, aggressive paint strokes in vivid petrol green and raw umber slashed across a dark slate surface beneath and around the product — heavy impasto texture with visible bristle marks, paint-loaded drips, and bold gestural energy"
+            decorative_effect = "elegant, controlled paint strokes in dark blue-green petrol and raw umber on a fine slate surface beneath the product — emphasizing the high-quality bristle marks, rich paint texture, and professional grade"
         elif category == "Αξεσουάρ":
-            decorative_effect = "a precision-machined dark steel industrial platform with CNC-milled grooves and chamfered edges; intense specular highlights from edge lighting creating sharp bright lines against the dark metal"
+            decorative_effect = "a cleanly machined dark steel industrial platform with elegant milled details; soft edge lighting highlighting the solid, professional build quality of the metal"
         elif category == "Διαλυτικά & Αραιωτικά":
-            decorative_effect = "dramatic plumes of dense vapor rising from the product base, backlit by a sharp petrol-green-gelled light source creating visible light rays through the vapor; the product sits on a dark chemical-resistant borosilicate glass surface with visible caustic refractions"
+            decorative_effect = "the product sits on a pristine, chemical-resistant borosilicate glass surface with subtle light refractions, set against a dark blue-green petrol studio background that emphasizes purity and professional grade fluid clarity"
         elif category == "Προετοιμασία & Καθαρισμός":
-            decorative_effect = "a high-impact frozen splash of crystal-clear water exploding upward from a dark polished surface near the product — individual droplets suspended mid-air catching pin-sharp highlights, with a spreading ripple pattern on the wet surface"
+            decorative_effect = "a crisp, perfectly clean polished surface subtly dampened with pure water droplets near the product — showcasing the cleansing quality and premium effectiveness in a controlled studio setting"
         elif category == "Σκληρυντές & Ενεργοποιητές":
-            decorative_effect = "intense, razor-sharp beams of white light slicing through dense petrol-green atmospheric haze around the product; the product sits on dark tempered glass with a vivid hot-orange glow at its base suggesting an exothermic chemical reaction"
+            decorative_effect = "a dark, premium tempered glass surface with a subtle, controlled warm glow at the base, emphasizing the precision and chemical potency of the activator against a dark blue-green petrol backdrop"
         elif category == "Αστάρια & Υποστρώματα":
-            decorative_effect = "a dramatically split cross-section pedestal showing thick, clearly distinct coating layers — raw rusted steel substrate, grey primer coat, and glossy topcoat — each layer sharply delineated and side-lit to emphasize depth and material contrast"
+            decorative_effect = "an elegant cross-section pedestal displaying flawless coating layers — clean substrate, smooth grey primer, and perfect topcoat — lit softly to highlight the strong adhesion and premium foundational quality of the primer"
 
         sizing_instruction = "The product must be tightly center-framed, occupying exactly 80% of the vertical canvas height."
         
         NANO_PROMPTS = {
             "clean": f"Using the provided image ONLY as a reference for the product's labels, colors, and shape, generate a BRAND NEW photography with these exact rules:\n1.  **COMMAND**: Ignore the camera angle, perspective, and lighting of the source image. Re-render the product from scratch, resting on an **invisible studio floor** against an **absolutely flat, seamless, solid pure white (#FFFFFF) backdrop**.\n2.  **NEGATIVE INSTRUCTIONS**: DO NOT include a horizon line, floor texture, visible surface transition, or depth. **Completely eliminate all floor reflections and contact shadows.** The white must be a solid, non-gradient color without lighting falloff.\n3.  **Composition & Angle**: Show the product from a straight-on, front-facing eye-level angle. Center it vertically/horizontally. {sizing_instruction} Full visibility (not cut off).\n4.  **Background & Lighting**: The entire canvas background must be a **uniform, flat, and non-reflective #FFFFFF pure white**. Use even studio lighting that does not cast any shadow on the background.\n5.  **Subject Isolation**: EXTRACT A SINGLE ITEM. If the source shows multiple items, generate ONLY ONE single item.\n6.  **Identity Accuracy**: PRESERVE THE IDENTITY (text, labels, logos, colors). Ensure all text on the label is legible and identical to the source.\n7.  **Surface**: The product should appear to float slightly or sit on a perfectly invisible surface that does not interact visually with the white background.",
             "realistic": f"Using the provided image ONLY as a reference for the product's labels, colors, and shape, generate a BRAND NEW photography with these exact rules:\n1.  **COMMAND**: Ignore the camera angle, perspective, and lighting of the source image. Re-render the product from scratch.\n2.  **NEGATIVE INSTRUCTIONS**: DO NOT inherit the lighting direction or camera tilt from the source.\n3.  **Composition & Lighting**: Side-on natural daylight creating realistic soft shadows. Show the product from a straight-on, eye-level angle. {sizing_instruction}\n4.  **Atmosphere**: Clean, light-grey polished concrete surface. Background is a softly blurred, minimalist workshop setting.\n5.  **Identity Accuracy**: Keep the branding and labels EXACTLY as they appear — preserve all text and logos, but render them from the new straight-on perspective.\n6.  **Aesthetic**: Authentic, premium yet practical workshop vibe.",
-            "styled": f"Using the provided image ONLY as a reference for the product's labels, colors, and shape, generate a BRAND NEW photography with these exact rules:\n1.  **COMMAND**: Ignore the camera angle, perspective, and lighting of the source image. Re-render the product from scratch in a **dramatic, dark industrial studio drenched in petrol green (#165c52) atmosphere**.\n2.  **NEGATIVE INSTRUCTIONS**: DO NOT use a white or neutral background. DO NOT create cartoon-like or digitally impossible effects — every element must be physically plausible and photorealistic. DO NOT float the product. All effects must look like they could exist in a real high-budget studio photoshoot.\n3.  **Composition & Camera**: Heroic low-angle perspective (15-20° upward looking), making the product tower over the viewer. Center the product. {sizing_instruction} Ultra-shallow depth of field (f/1.4 equivalent): razor-sharp product, everything else melts into cinematic bokeh.\n4.  **EXTREME Cinematic Lighting**: Aggressive high-contrast 3-point lighting — punishing hard key light from upper-left creating razor-sharp highlights and deep black shadows on the product, a STRONG saturated petrol green (#165c52) fill light from the right flooding the product's right side and background with unmistakable green, a hot 3200K tungsten kicker from directly behind creating a bright edge-separation halo. Contrast ratio must be extreme: blown-out specular highlights next to pitch-black shadows.\n5.  **Industrial Context**: Place the product on or near {decorative_effect}. {color_instruction}\n6.  **Identity Accuracy**: Extract the main product unit. PRESERVE THE BRANDING AND TEXT Identity — all labels, logos, and text must be legible and accurate.\n7.  **Background & Atmosphere**: Deep black studio void with thick, visible volumetric haze/fog strongly tinted petrol green (#165c52) — the green atmosphere must be clearly visible and dominant, creating visible light rays where the studio lights cut through the fog. The overall color palette of the image should read as dark + petrol green + sharp white highlights.\n8.  **Aesthetic**: Ultra-premium automotive advertising meets industrial material catalog. Think Porsche or Audi product photography — maximum drama, maximum contrast, maximum presence. The viewer must feel the weight and importance of this product."
+            "styled": f"Using the provided image ONLY as a reference for the product's labels, colors, and shape, generate a BRAND NEW photography with these exact rules:\n1.  **COMMAND**: Ignore the camera angle, perspective, and lighting of the source image. Re-render the product from scratch in an **elegant, dark premium studio with a dark blue-green petrol (#165c52) atmosphere**.\n2.  **NEGATIVE INSTRUCTIONS**: DO NOT use a white or neutral background. DO NOT create cartoon-like or digitally impossible effects — every element must be physically plausible and photorealistic. DO NOT float the product. All effects must look like they belong in a high-end catalog showcasing building materials.\n3.  **Composition & Camera**: Straight-on or slightly elevated perspective to clearly display the product and surrounding material textures. Center the product. {sizing_instruction} Soft depth of field: sharp product and immediate textures, trailing off smoothly into the studio background.\n4.  **Premium Lighting**: Sophisticated, controlled studio lighting tailored to highlight material textures and finishes — clear key light emphasizing physical qualities, a subtle dark blue-green petrol (#165c52) fill light setting the brand mood, and clean edge lighting. Avoid extreme blown-out contrast; focus on legibility and material richness.\n5.  **Context**: Place the product on or near {decorative_effect}. {color_instruction}\n6.  **Identity Accuracy**: Extract the main product unit. PRESERVE THE BRANDING AND TEXT Identity — all labels, logos, and text must be legible and accurate.\n7.  **Background & Atmosphere**: Dark studio setting with a subtle, rich dark blue-green petrol (#165c52) tint in the shadows and ambient space. The focus remains solidly on the product and the physical qualities of the materials, not the atmosphere.\n8.  **Aesthetic**: Ultra-premium, material-focused catalog imagery. Highlighting the quality, texture, and physical presence of the components. The viewer must feel the premium tangibility of this material."
         }
 
         IMAGEN_PROMPTS = {
             "clean": f"Professional studio product photography. The product is center-framed. **Background**: Absolutely flat, solid, non-reflective pure white (#FFFFFF) covering the entire frame. **No floor, no shadows, no reflections, and no horizon dots.** The product appears to be perfectly isolated against a uniform white void. {sizing_instruction}",
             "realistic": f"Professional cinematic product photography. The product sits on a high-texture, dark-grey polished concrete surface with realistic micro-reflections. {sizing_instruction} Environment: A minimalist, high-end design workshop with soft, volumetric natural daylight streaming from a side window. Lighting: Warm 4000K sunlight with subtle lens bloom and soft, elongated natural shadows. Camera: 50mm f/1.8 depth of field, sharp focus on the product label with a creamy background blur.",
-            "styled": f"Ultra-dramatic industrial editorial product photography. The product sits on {decorative_effect}. {color_instruction} {sizing_instruction} **Background**: Deep black studio void with thick volumetric fog heavily tinted petrol green (#165c52), creating visible god-rays where lights cut through. **Lighting**: Aggressive high-contrast 3-point — hard key upper-left, STRONG saturated petrol green (#165c52) fill flooding right side, hot tungsten kicker behind for bright edge halo. Heroic low-angle camera (15-20° upward). Ultra-shallow depth of field. Extreme contrast: blown-out highlights against pitch-black shadows. Mood: Porsche-level automotive advertising. Maximum drama and presence."
+            "styled": f"Premium material-focused product photography. The product sits on {decorative_effect}. {color_instruction} {sizing_instruction} **Background**: Dark studio environment with a subtle, rich dark blue-green petrol (#165c52) ambient tone emphasizing material quality without overwhelming the scene. **Lighting**: Sophisticated studio lighting designed to highlight physical textures, finishes, and premium quality without extreme contrast. **Camera**: Clean, balanced perspective. Mood: High-end building material and architectural catalog. Tangible, professional, and richly textured."
         }
         
         unique_colors = set()
@@ -306,73 +309,60 @@ Output valid JSON complying with the schema provided.
             from google.genai import types
 
             if generation_model == "imagen":
-                logger.info(f"VisionAgent: Calling Imagen Recontext for {sku} (env={environment})...")
+                logger.info(f"VisionAgent: Calling Imagen for {sku} recontextualization...")
                 prompt = IMAGEN_PROMPTS.get(environment, IMAGEN_PROMPTS["clean"])
                 doc_ref.update({"enrichment_message": "Re-contextualizing with Imagen..."})
                 
-                try:
-                    from google.auth import default, transport
-                    
-                    region = LLMConfig.REGION
-                    project_id = LLMConfig.PROJECT_ID
-                    model_id = ModelName.IMAGE_RECONTEXT.value
-                    
-                    endpoint = f"https://{region}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{region}/publishers/google/models/{model_id}:predict"
-                    
-                    imagen_retries = 5
-                    for attempt in range(imagen_retries + 1):
-                        try:
-                            # Removed forced 60s sleep since we're in us-central1 and have higher capacity
-                            # Handle rate limits dynamically via backoff instead
-                            if attempt == 0:
-                                pass
+                from google.auth import default, transport
+                region = LLMConfig.REGION
+                project_id = LLMConfig.PROJECT_ID
+                model_id = ModelName.IMAGE_RECONTEXT.value
+                endpoint = f"https://{region}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{region}/publishers/google/models/{model_id}:predict"
+                
+                imagen_retries = 3
+                for attempt in range(imagen_retries + 1):
+                    try:
+                        creds, _ = default()
+                        auth_req = transport.requests.Request()
+                        creds.refresh(auth_req)
+                        
+                        payload = {
+                            "instances": [{"prompt": prompt, "productImages": [{"image": {"bytesBase64Encoded": base64.b64encode(image_data).decode("utf-8")}}] }],
+                            "parameters": {"sampleCount": 1, "addWatermark": False, "seed": random.randint(1, 1000000), "enhancePrompt": False}
+                        }
+                        headers = {"Authorization": f"Bearer {creds.token}", "Content-Type": "application/json"}
+                        
+                        resp = requests.post(endpoint, json=payload, headers=headers, timeout=60)
+                        resp.raise_for_status()
+                        resp_json = resp.json()
+                        
+                        if "predictions" in resp_json and len(resp_json["predictions"]) > 0:
+                            pred = resp_json["predictions"][0]
+                            if "bytesBase64Encoded" in pred:
+                                img_bytes = base64.b64decode(pred["bytesBase64Encoded"])
+                                image_url = VisionAgent._upload_to_storage(img_bytes, "image/jpeg", sku, "base")
+                                base_image_bytes = img_bytes
+                                break
+                        else:
+                            raise Exception("Imagen: No predictions returned.")
                             
-                            creds, project = default()
-                            auth_req = transport.requests.Request()
-                            creds.refresh(auth_req)
-                            
-                            payload = {
-                                "instances": [{"prompt": prompt, "productImages": [{"image": {"bytesBase64Encoded": base64.b64encode(image_data).decode("utf-8")}}] }],
-                                "parameters": {"sampleCount": 1, "addWatermark": False, "seed": random.randint(1, 1000000), "enhancePrompt": False}
-                            }
-                            
-                            headers = {"Authorization": f"Bearer {creds.token}", "Content-Type": "application/json"}
-                            
-                            response = requests.post(endpoint, json=payload, headers=headers, timeout=60)
-                            response.raise_for_status()
-                            resp_json = response.json()
-                            
-                            if "predictions" in resp_json and len(resp_json["predictions"]) > 0:
-                                pred = resp_json["predictions"][0]
-                                if "bytesBase64Encoded" in pred:
-                                    img_bytes = base64.b64decode(pred["bytesBase64Encoded"])
-                                    image_url = VisionAgent._upload_to_storage(img_bytes, "image/jpeg", sku, "base")
-                                    base_image_bytes = img_bytes
-                            
-                            break # Success! Break out of the retry loop
-                                    
-                        except Exception as ie:
-                            error_str = str(ie)
-                            if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < imagen_retries:
-                                base_delay = min(10.0 * (2 ** attempt), 60.0)
-                                sleep_time = base_delay + random.uniform(2.0, 10.0)
-                                logger.warning(f"Imagen Rate limited (429). Sleeping {sleep_time:.1f}s... (Attempt {attempt+1}/{imagen_retries})")
-                                time.sleep(sleep_time)
-                            else:
-                                raise ie # Raise if retries exhausted or not 429
-                                
-                except Exception as ie:
-                    logger.error(f"Imagen Recontext API call failed: {ie}")
-                    raise ie
+                    except Exception as ie:
+                        if ("429" in str(ie) or "RESOURCE_EXHAUSTED" in str(ie)) and attempt < imagen_retries:
+                            wait = (2 ** attempt) + (random.random() * 2)
+                            logger.warning(f"VisionAgent: Imagen 429. Retrying in {wait:.1f}s...")
+                            time.sleep(wait)
+                        else:
+                            logger.error(f"Imagen Recontext API call failed: {ie}")
+                            raise ie
 
             else: # Gemini Flash Image
                 logger.info(f"VisionAgent: Calling Gemini Studio for {sku} (env={environment})...")
                 prompt = NANO_PROMPTS.get(environment, NANO_PROMPTS["clean"])
                 doc_ref.update({"enrichment_message": "Synthesizing studio lighting..."})
                 
-                response = VisionAgent._generate_with_retry(
+                response = generate_with_retry(
                     client=client,
-                    model=LLMConfig.get_image_model_name(),
+                    model_name=LLMConfig.get_image_model_name(),
                     contents=[
                         types.Content(
                             role="user",
@@ -383,7 +373,8 @@ Output valid JSON complying with the schema provided.
                         )
                     ],
                     config=types.GenerateContentConfig(temperature=0.3, seed=random.randint(1, 1000000)),
-                    retries=6, initial_delay=5.0
+                    sku=sku,
+                    max_retries=6
                 )
                 
                 if hasattr(response, 'generated_image') and response.generated_image:
@@ -429,9 +420,9 @@ Output valid JSON complying with the schema provided.
                         
                         recolor_prompt = f"Accurately recolor ONLY the ambient light accents and contextual surface elements to exactly {color_name}. DO NOT change the background, floor, or the central product itself. Preserve the exact geometry, reflections, shadows, and lighting perfectly."
                         
-                        recolor_resp = VisionAgent._generate_with_retry(
+                        recolor_resp = generate_with_retry(
                             client=client,
-                            model=ModelName.IMAGE_GEN.value,
+                            model_name=ModelName.IMAGE_GEN.value,
                             contents=[
                                 types.Content(role="user", parts=[
                                     types.Part.from_bytes(data=base_image_bytes, mime_type="image/jpeg"),
@@ -439,7 +430,7 @@ Output valid JSON complying with the schema provided.
                                 ])
                             ],
                             config=types.GenerateContentConfig(temperature=0.0),
-                            retries=6, initial_delay=4.0
+                            sku=sku
                         )
                         
                         variant_img_bytes = None

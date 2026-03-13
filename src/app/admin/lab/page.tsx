@@ -89,6 +89,8 @@ function LabDashboardContent() {
             await updateDoc(doc(db, "staging_products", productId), {
                 "ai_data.title": newTitle,
                 "ai_data.description": newDescription,
+                "ai_data.generated_images": deleteField(),
+                "ai_data.images": deleteField(),
                 status: ProductState.SOURCING_IMAGES,
                 enrichment_message: "Metadata manually approved. Resuming pipeline..."
             });
@@ -104,22 +106,32 @@ function LabDashboardContent() {
 
         setIsUploading(true);
         try {
-            const text = await file.text();
+            const isXLSX = file.name.toLowerCase().endsWith('.xlsx');
+            let finalBody: any;
+            let finalHeaders: any = {};
+
+            if (isXLSX) {
+                finalBody = await file.arrayBuffer();
+                finalHeaders = { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+            } else {
+                finalBody = await file.text();
+                finalHeaders = { "Content-Type": "text/csv" };
+            }
 
             // Determine the Cloud Function URL
             const endpoint = `${getBaseEndpoint()}/pylon_ingest_csv`;
 
             const res = await fetch(endpoint, {
                 method: "POST",
-                body: text,
-                headers: { "Content-Type": "text/csv" }
+                body: finalBody,
+                headers: finalHeaders
             });
 
             if (!res.ok) throw new Error(await res.text());
 
-            systemLogger.info("CSV payload parsed and ingested successfully.", await res.json());
+            systemLogger.info("File payload parsed and ingested successfully.", await res.json());
         } catch (error) {
-            systemLogger.error("CSV Upload preflight or ingest failed.", error);
+            systemLogger.error("File Upload preflight or ingest failed.", error);
             alert(`Upload failed: ${error instanceof Error ? error.message : String(error)}`);
         } finally {
             setIsUploading(false);
@@ -132,6 +144,8 @@ function LabDashboardContent() {
         try {
             await updateDoc(doc(db, "staging_products", productId), {
                 "ai_data.selected_images": { "base": imageUrl },
+                "ai_data.generated_images": deleteField(),
+                "ai_data.images": deleteField(),
                 status: ProductState.GENERATING_STUDIO,
                 enrichment_message: "Source image provided. Beginning Studio Generation..."
             });
@@ -430,7 +444,7 @@ function LabDashboardContent() {
                     <div className="p-4 border-b border-zinc-200">
                         <input
                             type="file"
-                            accept=".csv"
+                            accept=".csv,.xlsx"
                             className="hidden"
                             ref={fileInputRef}
                             onChange={handleFileUpload}
@@ -448,7 +462,7 @@ function LabDashboardContent() {
                                 <UploadCloud className="w-8 h-8 text-zinc-400 group-hover:text-zinc-600 transition-colors mb-2" />
                             )}
                             <h3 className="text-sm font-medium text-zinc-900">
-                                {isUploading ? "Ingesting..." : "Drop Pylon CSV"}
+                                {isUploading ? "Ingesting..." : "Drop Pylon CSV/XLSX"}
                             </h3>
                             <p className="text-[10px] text-zinc-500 mt-1">
                                 {isUploading ? "Parsing format..." : "Autonomous ingest"}
@@ -499,7 +513,7 @@ function LabDashboardContent() {
                 </aside>
 
                 {/* 3. Central Pane: Live Data Grid */}
-                <main className="flex-1 min-h-0 relative bg-white flex flex-col">
+                <main className="flex-1 min-w-0 min-h-0 relative bg-white flex flex-col">
                     {loading ? (
                         <div className="p-8 flex items-center justify-center h-full">
                             <span className="text-sm text-zinc-400 animate-pulse">Loading Workspace...</span>
@@ -511,7 +525,7 @@ function LabDashboardContent() {
                             </div>
                             <h2 className="text-lg font-medium text-zinc-900 mb-2">Awaiting Data</h2>
                             <p className="text-sm text-zinc-500 max-w-sm">
-                                Upload a Pylon CSV to instantly populate the grid and trigger the autonomous enrichment pipeline.
+                                Upload a Pylon CSV or XLSX file to instantly populate the grid and trigger the autonomous enrichment pipeline.
                             </p>
                         </div>
                     ) : (
@@ -621,7 +635,10 @@ function LabDashboardContent() {
                                                             )}
                                                                 onClick={(e) => { e.stopPropagation(); setLightboxSrc(latestImage); }}
                                                             >
-                                                                <img src={latestImage} className="w-full h-full object-cover" />
+                                                                 <img 
+                                                                    src={`${latestImage}${latestImage.includes('?') ? '&' : '?'}v=${typeof product.updated_at === 'object' ? product.updated_at?.seconds : Date.now()}`} 
+                                                                    className="w-full h-full object-cover" 
+                                                                />
                                                                 <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                                                     <ZoomIn className="w-4 h-4 text-white" />
                                                                 </div>

@@ -13,6 +13,7 @@ class ProductState(str, Enum):
     BATCH_GENERATING = "BATCH_GENERATING"
     GENERATING_METADATA = "GENERATING_METADATA"
     NEEDS_METADATA_REVIEW = "NEEDS_METADATA_REVIEW"
+    RESOLVING_VARIANTS = "RESOLVING_VARIANTS"
     REMOVING_SOURCE_BACKGROUND = "REMOVING_SOURCE_BACKGROUND"
     SOURCING_IMAGES = "SOURCING_IMAGES"
     NEEDS_IMAGE_REVIEW = "NEEDS_IMAGE_REVIEW"
@@ -68,7 +69,7 @@ class PaintTechnicalSpecs(BaseModel):
     voc_level: Optional[str] = Field(description="Επίπεδο ΠΟΕ (VOC)", default=None)
     spray_nozzle_type: Optional[str] = Field(description="Τύπος μπεκ (π.χ. Βεντάλια, Κυκλικό)", default=None)
 
-ProductCategory = Literal[
+ProductType = Literal[
     "Προετοιμασία & Καθαρισμός",
     "Αστάρια & Υποστρώματα",
     "Χρώματα Βάσης",
@@ -81,6 +82,13 @@ ProductCategory = Literal[
     "Άλλο"
 ]
 
+ProjectCategory = Literal[
+    "Αυτοκίνητο",
+    "Ναυτιλιακά",
+    "Οικοδομικά",
+    "Ειδικές Εφαρμογές"
+]
+
 
 class ProductEnrichmentData(BaseModel):
     """
@@ -91,7 +99,8 @@ class ProductEnrichmentData(BaseModel):
     description: str = Field(description="Comprehensive and customer-friendly summary in Greek.")
     short_description: str = Field(description="Brief summary for collections (in Greek).", default="")
     tags: List[str] = Field(description="List of relevant tags (in Greek)")
-    category: ProductCategory = Field(description="Main product category (in Greek)")
+    type: ProductType = Field(description="The primary classification of the product (e.g. Αστάρια, Βερνίκια) (in Greek)")
+    category: ProjectCategory = Field(description="The project category or industry the product is meant for (in Greek)")
     variants: List[ProductVariant] = Field(description="Discovered dynamic variants based on the available options", default=[])
     attributes: Dict[str, Any] = Field(description="Key-value product attributes", default={})
     technical_specs: Optional[PaintTechnicalSpecs] = Field(description="Technical specifications for paint/spray products, structured strictly in Greek", default=None)

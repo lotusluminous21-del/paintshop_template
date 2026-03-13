@@ -19,6 +19,7 @@ export default async function CategoriesPage({
 }) {
     const params = await searchParams;
     const activeType = typeof params.type === 'string' ? params.type : 'all';
+    const activeCategory = typeof params.category === 'string' ? params.category : undefined;
 
     // Fetch all products and product types in parallel
     const [allProducts, productTypes] = await Promise.all([
@@ -33,6 +34,7 @@ export default async function CategoriesPage({
             products={allProducts}
             productTypes={productTypes}
             activeType={activeType}
+            initialCategory={activeCategory}
         />
     );
 }

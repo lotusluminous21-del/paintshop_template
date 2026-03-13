@@ -47,6 +47,9 @@ class EnrichmentController:
             # STATE MACHINE ROUTER
             if state == ProductState.GENERATING_METADATA:
                 EnrichmentController._route_to_metadata_agent(new_doc.reference, data)
+            
+            elif state == ProductState.RESOLVING_VARIANTS:
+                EnrichmentController._route_to_variant_agent(new_doc.reference, data)
                 
             elif state == ProductState.SOURCING_IMAGES:
                 EnrichmentController._route_to_vision_agent_sourcing(new_doc.reference, data)
@@ -132,6 +135,15 @@ class EnrichmentController:
         except Exception as e:
             logger.error(f"MetadataAgent Failed: {e}")
             EnrichmentController._handle_agent_failure(doc_ref, data, f"Metadata Error: {str(e)[:100]}")
+
+    @staticmethod
+    def _route_to_variant_agent(doc_ref, data: dict):
+        from .agents.variant_agent import VariantAgent
+        try:
+            VariantAgent.process(doc_ref, data)
+        except Exception as e:
+            logger.error(f"VariantAgent Failed: {e}")
+            EnrichmentController._handle_agent_failure(doc_ref, data, f"Variant Error: {str(e)[:100]}")
 
     @staticmethod
     def _route_to_vision_agent_sourcing(doc_ref, data: dict):

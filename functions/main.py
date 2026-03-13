@@ -568,7 +568,7 @@ def pylon_ingest_csv(req: https_fn.Request) -> https_fn.Response:
     Expects raw CSV content in the body.
     """
     from firebase_admin import firestore
-    from pylon.ingest import parse_pylon_csv, ingest_products_to_firestore
+    from pylon.ingest import parse_pylon_csv, parse_pylon_xlsx, ingest_products_to_firestore
 
     # Set CORS headers for the preflight request
     if req.method == 'OPTIONS':
@@ -588,13 +588,20 @@ def pylon_ingest_csv(req: https_fn.Request) -> https_fn.Response:
     if req.method != "POST":
         return https_fn.Response("Method Not Allowed", status=405, headers=headers)
     
-    csv_content = req.get_data(as_text=True)
-    if not csv_content:
-        return https_fn.Response("Empty body", status=400, headers=headers)
-        
+    content_type = req.headers.get("Content-Type", "")
+    
     try:
-        # 1. Parse
-        products = parse_pylon_csv(csv_content)
+        # 1. Parse based on content type
+        if "spreadsheetml.sheet" in content_type:
+            file_content = req.get_data() # Binary
+            if not file_content:
+                return https_fn.Response("Empty body", status=400, headers=headers)
+            products = parse_pylon_xlsx(file_content)
+        else:
+            csv_content = req.get_data(as_text=True)
+            if not csv_content:
+                return https_fn.Response("Empty body", status=400, headers=headers)
+            products = parse_pylon_csv(csv_content)
         
         # 2. Ingest to Firestore
         db = firestore.client()
@@ -605,7 +612,7 @@ def pylon_ingest_csv(req: https_fn.Request) -> https_fn.Response:
         
         return https_fn.Response(json.dumps(stats), status=200, mimetype='application/json', headers=headers)
     except Exception as e:
-        print(f"Error in pylon_ingest_csv: {e}")
+        main_logger.error(f"Error in pylon_ingest_csv: {e}", exc_info=True)
         return https_fn.Response(f"Error: {str(e)}", status=500, headers=headers)
 
 @firestore_fn.on_document_created(

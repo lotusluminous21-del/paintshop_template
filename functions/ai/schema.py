@@ -13,6 +13,7 @@ class ProductVariant(BaseModel):
     option3_name: Optional[str] = Field(description="Name of the third dynamic option, if applicable", default=None)
     option3_value: Optional[str] = Field(description="Value for the third option, if applicable", default=None)
     pylon_sku: Optional[str] = None
+    price: Optional[float] = Field(description="Retail price for this variant", default=None)
 
 class ProductImage(BaseModel):
     url: str

@@ -33,10 +33,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-DELAY_GEMINI = 30             # Hard 30s between each Gemini image generation
-DELAY_IMAGEN = 5              # Reduced delay for us-central1 (higher quotas)
-MAX_RETRIES = 5               # Retries per product on 429
-INITIAL_BACKOFF = 30          # Starting backoff on 429
+DELAY_GEMINI = 5              # Reduced from 30s to 5s (safe for flash-lite)
+DELAY_IMAGEN = 5              # us-central1 delay
+MAX_RETRIES = 3               # Reduced from 5
+INITIAL_BACKOFF = 5           # Reduced from 30s
 REQUEST_TIMEOUT = 20          # Image download timeout
 LOCK_TIMEOUT_SECONDS = 180    # 3 minutes without an inline heartbeat = dead worker
 

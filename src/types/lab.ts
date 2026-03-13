@@ -8,6 +8,7 @@ export enum ProductState {
     RAW_INGESTED = "RAW_INGESTED",
     GENERATING_METADATA = "GENERATING_METADATA",
     NEEDS_METADATA_REVIEW = "NEEDS_METADATA_REVIEW",
+    RESOLVING_VARIANTS = "RESOLVING_VARIANTS",
     SOURCING_IMAGES = "SOURCING_IMAGES",
     NEEDS_IMAGE_REVIEW = "NEEDS_IMAGE_REVIEW",
     REMOVING_SOURCE_BACKGROUND = "REMOVING_SOURCE_BACKGROUND",
@@ -20,7 +21,7 @@ export enum ProductState {
     FAILED = "FAILED"
 }
 
-export type ProductCategory =
+export type ProductType =
     | "Προετοιμασία & Καθαρισμός"
     | "Αστάρια & Υποστρώματα"
     | "Χρώματα Βάσης"
@@ -31,6 +32,12 @@ export type ProductCategory =
     | "Διαλυτικά & Αραιωτικά"
     | "Αξεσουάρ"
     | "Άλλο";
+
+export type ProjectCategory =
+    | "Αυτοκίνητο"
+    | "Ναυτιλιακά"
+    | "Οικοδομικά"
+    | "Ειδικές Εφαρμογές";
 
 export interface ProductVariant {
     sku_suffix: string;
@@ -82,7 +89,8 @@ export interface ProductEnrichmentData {
     description: string;
     short_description: string;
     tags: string[];
-    category: ProductCategory | string;
+    type: ProductType | string;
+    category: ProjectCategory | string;
     variants: ProductVariant[];
     attributes: Record<string, any>;
     technical_specs?: PaintTechnicalSpecs;

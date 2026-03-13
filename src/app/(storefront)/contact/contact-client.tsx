@@ -23,11 +23,11 @@ const mapStyles = [
     { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
     { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#e5e5e5' }] },
     { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#9e9e9e' }] },
-    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#0f4d44' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#19657a' }] },
     { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#ffffff' }, { weight: 1 }] },
     { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#ffffff' }] },
-    { featureType: 'road', elementType: 'labels.text.stroke', stylers: [{ color: '#0f4d44' }, { weight: 2 }] },
-    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#0f4d44' }] },
+    { featureType: 'road', elementType: 'labels.text.stroke', stylers: [{ color: '#19657a' }, { weight: 2 }] },
+    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#19657a' }] },
     { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#c9c9c9' }] },
     { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#9e9e9e' }] },
 ];
@@ -130,8 +130,8 @@ export default function ContactClient() {
                             rel="noopener noreferrer"
                             className="absolute bottom-6 left-6 z-20"
                         >
-                            <div className="bg-background p-5 border border-foreground shadow-[4px_4px_0px_0px_rgba(15,77,68,1)] transition-all duration-300 hover:shadow-[6px_6px_0px_0px_rgba(15,77,68,1)] hover:-translate-y-0.5 hover:-translate-x-0.5 cursor-pointer">
-                                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-1.5 text-[#0f4d44] dark:text-[#207a6d]">Καλαμαριά, Θεσσαλονίκη</p>
+                            <div className="bg-background p-5 border border-foreground shadow-[4px_4px_0px_0px_rgba(25,101,122,1)] transition-all duration-300 hover:shadow-[6px_6px_0px_0px_rgba(25,101,122,1)] hover:-translate-y-0.5 hover:-translate-x-0.5 cursor-pointer">
+                                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-1.5 text-[#19657a] dark:text-[#207a6d]">Καλαμαριά, Θεσσαλονίκη</p>
                                 <p className="text-xs font-mono font-bold uppercase tracking-tight text-foreground/90">Εθνικής Αντιστάσεως 66, 551 33</p>
                             </div>
                         </a>

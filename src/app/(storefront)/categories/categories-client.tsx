@@ -119,10 +119,12 @@ export function CategoriesClient({
     products,
     productTypes,
     activeType,
+    initialCategory,
 }: {
     products: Product[]
     productTypes: string[]
     activeType: string
+    initialCategory?: string
 }) {
     const router = useRouter()
     const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false)
@@ -137,6 +139,9 @@ export function CategoriesClient({
     const [selectedSurfaces, setSelectedSurfaces] = React.useState<Set<string>>(new Set())
     const [selectedBrands, setSelectedBrands] = React.useState<Set<string>>(new Set())
     const [selectedChemicalBases, setSelectedChemicalBases] = React.useState<Set<string>>(new Set())
+    const [selectedProjectCategories, setSelectedProjectCategories] = React.useState<Set<string>>(
+        new Set(initialCategory ? [initialCategory] : [])
+    )
 
     // Price Filter State
     const allPrices = React.useMemo(() => products.map(p => parseFloat(p.priceRange.minVariantPrice.amount)), [products])
@@ -148,6 +153,13 @@ export function CategoriesClient({
     React.useEffect(() => {
         setMaxPrice(maxGlobalPrice)
     }, [maxGlobalPrice])
+
+    // Sync initialCategory from URL/props to state
+    React.useEffect(() => {
+        if (initialCategory) {
+            setSelectedProjectCategories(new Set([initialCategory]))
+        }
+    }, [initialCategory])
 
     // Extract available filter values from products (metafield → tag fallback)
     const availableFinishes = React.useMemo(
@@ -165,6 +177,9 @@ export function CategoriesClient({
     const availableChemicalBases = React.useMemo(
         () => extractFilterValues(products, 'chemical_base', 'chemical-base'), [products]
     )
+    const availableProjectCategories = React.useMemo(
+        () => extractFilterValues(products, 'category', 'category'), [products]
+    )
     const availableBrands = React.useMemo(() => {
         const brands = new Set<string>()
         products.forEach(p => p.vendor && brands.add(p.vendor))
@@ -179,6 +194,7 @@ export function CategoriesClient({
         setSelectedSurfaces(new Set())
         setSelectedBrands(new Set())
         setSelectedChemicalBases(new Set())
+        setSelectedProjectCategories(new Set())
         setMaxPrice(maxGlobalPrice)
         router.push(`/categories${type === 'all' ? '' : `?type=${encodeURIComponent(type)}`}`, { scroll: false })
     }
@@ -206,6 +222,17 @@ export function CategoriesClient({
         setter(next)
     }
 
+    const clearAllFilters = () => {
+        setSelectedFinishes(new Set())
+        setSelectedApplications(new Set())
+        setSelectedEnvironments(new Set())
+        setSelectedSurfaces(new Set())
+        setSelectedBrands(new Set())
+        setSelectedChemicalBases(new Set())
+        setSelectedProjectCategories(new Set())
+        setMaxPrice(maxGlobalPrice)
+    }
+
     // Filter + sort products
     const filteredProducts = React.useMemo(() => {
         let result = [...products]
@@ -221,6 +248,7 @@ export function CategoriesClient({
         result = result.filter(p => productMatchesFilter(p, 'environment', selectedEnvironments, 'environment'))
         result = result.filter(p => productMatchesFilter(p, 'surfaces', selectedSurfaces, 'surface'))
         result = result.filter(p => productMatchesFilter(p, 'chemical_base', selectedChemicalBases, 'chemical-base'))
+        result = result.filter(p => productMatchesFilter(p, 'category', selectedProjectCategories, 'category'))
         if (selectedBrands.size > 0) {
             result = result.filter(p => p.vendor && selectedBrands.has(p.vendor))
         }
@@ -262,10 +290,10 @@ export function CategoriesClient({
 
     // Active filter count for badge
     const isPriceFiltered = maxPrice < maxGlobalPrice
-    const activeFilterCount = selectedFinishes.size + selectedApplications.size + selectedEnvironments.size + selectedSurfaces.size + selectedBrands.size + selectedChemicalBases.size + (isPriceFiltered ? 1 : 0)
+    const activeFilterCount = selectedFinishes.size + selectedApplications.size + selectedEnvironments.size + selectedSurfaces.size + selectedBrands.size + selectedChemicalBases.size + selectedProjectCategories.size + (isPriceFiltered ? 1 : 0)
 
     // Whether we have any filter options to display
-    const hasAnyFilters = availableFinishes.length > 0 || availableApplications.length > 0 || availableEnvironments.length > 0 || availableSurfaces.length > 0 || availableBrands.length > 0 || availableChemicalBases.length > 0 || maxGlobalPrice > minGlobalPrice
+    const hasAnyFilters = availableFinishes.length > 0 || availableApplications.length > 0 || availableEnvironments.length > 0 || availableSurfaces.length > 0 || availableBrands.length > 0 || availableChemicalBases.length > 0 || availableProjectCategories.length > 0 || maxGlobalPrice > minGlobalPrice
 
     // ─── Filter toggle group renderer ───
     const FilterSection = ({
@@ -401,6 +429,7 @@ export function CategoriesClient({
                         </div>
                     )}
 
+                    <FilterSection title="Κατηγορία Έργου" options={availableProjectCategories} selected={selectedProjectCategories} setter={setSelectedProjectCategories} defaultOpen={true} />
                     <FilterSection title="Μάρκα" options={availableBrands} selected={selectedBrands} setter={setSelectedBrands} />
                     <FilterSection title="Χημική Βάση" options={availableChemicalBases} selected={selectedChemicalBases} setter={setSelectedChemicalBases} />
                     <FilterSection title="Φινίρισμα" options={availableFinishes} selected={selectedFinishes} setter={setSelectedFinishes} />
@@ -413,15 +442,7 @@ export function CategoriesClient({
             {/* Clear Filters */}
             {activeFilterCount > 0 && (
                 <button
-                    onClick={() => {
-                        setSelectedFinishes(new Set())
-                        setSelectedApplications(new Set())
-                        setSelectedEnvironments(new Set())
-                        setSelectedSurfaces(new Set())
-                        setSelectedBrands(new Set())
-                        setSelectedChemicalBases(new Set())
-                        setMaxPrice(maxGlobalPrice)
-                    }}
+                    onClick={clearAllFilters}
                     className="text-xs font-bold text-accent hover:text-primary uppercase tracking-wider transition-colors mt-2"
                 >
                     Καθαρισμός Φίλτρων ({activeFilterCount})
@@ -571,12 +592,7 @@ export function CategoriesClient({
                                 </p>
                                 {activeFilterCount > 0 && (
                                     <button
-                                        onClick={() => {
-                                            setSelectedFinishes(new Set())
-                                            setSelectedApplications(new Set())
-                                            setSelectedEnvironments(new Set())
-                                            setSelectedSurfaces(new Set())
-                                        }}
+                                        onClick={clearAllFilters}
                                         className="mt-4 px-6 py-2 bg-primary text-primary-foreground text-xs font-bold uppercase tracking-widest hover:bg-primary/90 transition-colors"
                                     >
                                         Καθαρισμός Φίλτρων

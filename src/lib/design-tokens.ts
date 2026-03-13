@@ -14,11 +14,11 @@ export const colors = {
     foreground: 'hsl(0, 0%, 100%)',
   },
 
-  // Accent (Dark Petrol Green #165c52)
+  // Accent (Dark Green-Blue Petrol #19657a)
   accent: {
-    DEFAULT: 'hsl(171, 61%, 22%)',
-    light: 'hsl(171, 55%, 30%)',
-    dark: 'hsl(171, 67%, 18%)',
+    DEFAULT: 'hsl(192, 60%, 25%)',
+    light: 'hsl(192, 50%, 35%)',
+    dark: 'hsl(192, 70%, 18%)',
     foreground: 'hsl(0, 0%, 100%)',
   },
 
@@ -202,9 +202,9 @@ export const statusColors = {
     border: 'hsl(38, 92%, 50%, 0.3)',
   },
   new: {
-    bg: 'hsl(171, 61%, 22%)',
+    bg: 'hsl(192, 60%, 25%)',
     text: 'hsl(0, 0%, 100%)',
-    border: 'hsl(171, 61%, 22%)',
+    border: 'hsl(192, 60%, 25%)',
   },
 } as const;
 

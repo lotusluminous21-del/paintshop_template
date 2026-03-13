@@ -28,6 +28,7 @@ interface ShopifyProductInput {
         name: string;
         values: string[];
     }>;
+    metafields?: any[];
     id?: number | string;
 }
 
