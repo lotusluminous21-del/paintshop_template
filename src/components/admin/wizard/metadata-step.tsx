@@ -42,6 +42,9 @@ interface ProductData {
         title?: string;
         description?: string;
         category?: string;
+        type?: string;
+        product_type?: string;
+        project_category?: string;
         tags?: string[];
         variants?: Variant[];
         technical_specs?: Record<string, any>;
@@ -244,29 +247,49 @@ export function MetadataStep({ products, onStartScan, onRetry, onComplete }: Met
                                     placeholder="Empty..."
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label className="text-[10px] font-bold text-zinc-900 uppercase">Category</Label>
-                                <select
-                                    className="w-full text-sm bg-white border-zinc-200 rounded-md h-9 px-2 focus:ring-1 focus:ring-zinc-400 outline-none"
-                                    value={activeProduct.ai_data?.category || ""}
-                                    onChange={(e) => updateProduct(activeProduct.sku, { category: e.target.value })}
-                                >
-                                    <option value="">Επιλέξτε Κατηγορία</option>
-                                    {[
-                                        "Προετοιμασία & Καθαρισμός",
-                                        "Αστάρια & Υποστρώματα",
-                                        "Χρώματα Βάσης",
-                                        "Βερνίκια & Φινιρίσματα",
-                                        "Σκληρυντές & Ενεργοποιητές",
-                                        "Στόκοι & Πλαστελίνες",
-                                        "Πινέλα & Εργαλεία",
-                                        "Διαλυτικά & Αραιωτικά",
-                                        "Αξεσουάρ",
-                                        "Άλλο"
-                                    ].map(cat => (
-                                        <option key={cat} value={cat}>{cat}</option>
-                                    ))}
-                                </select>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] font-bold text-zinc-900 uppercase">Product Type</Label>
+                                    <select
+                                        className="w-full text-[13px] bg-white border-zinc-200 rounded-md h-9 px-2 focus:ring-1 focus:ring-zinc-400 outline-none"
+                                        value={activeProduct.ai_data?.product_type || activeProduct.ai_data?.type || activeProduct.ai_data?.category || ""}
+                                        onChange={(e) => updateProduct(activeProduct.sku, { product_type: e.target.value })}
+                                    >
+                                        <option value="">Επιλέξτε Τύπο</option>
+                                        {[
+                                            "Προετοιμασία & Καθαρισμός",
+                                            "Αστάρια & Υποστρώματα",
+                                            "Χρώματα Βάσης",
+                                            "Βερνίκια & Φινιρίσματα",
+                                            "Σκληρυντές & Ενεργοποιητές",
+                                            "Στόκοι & Πλαστελίνες",
+                                            "Πινέλα & Εργαλεία",
+                                            "Διαλυτικά & Αραιωτικά",
+                                            "Αξεσουάρ",
+                                            "Άλλο"
+                                        ].map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-[10px] font-bold text-zinc-900 uppercase">Project Category</Label>
+                                    <select
+                                        className="w-full text-[13px] bg-white border-zinc-200 rounded-md h-9 px-2 focus:ring-1 focus:ring-zinc-400 outline-none"
+                                        value={activeProduct.ai_data?.project_category || (["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"].includes(activeProduct.ai_data?.category || "") ? activeProduct.ai_data?.category : "") || ""}
+                                        onChange={(e) => updateProduct(activeProduct.sku, { project_category: e.target.value })}
+                                    >
+                                        <option value="">Επιλέξτε Κατηγορία Έργου</option>
+                                        {[
+                                            "Αυτοκίνητο",
+                                            "Ναυτιλιακά",
+                                            "Οικοδομικά",
+                                            "Ειδικές Εφαρμογές"
+                                        ].map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>

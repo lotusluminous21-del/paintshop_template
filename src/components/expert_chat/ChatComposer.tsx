@@ -187,6 +187,14 @@ export function ChatComposer({ onSend, onImageSelect, isLoading }: ChatComposerP
             </div>
           </div>
         </div>
+        
+        {/* Disclaimer */}
+        <div className="mt-2 text-center flex items-center justify-center gap-1 text-[10px] text-muted-foreground/60 px-4">
+          <span>Ο Ειδικός AI μπορεί να κάνει λάθη. Ελέγχετε πάντα τις προτάσεις.</span>
+          <a href="/contact" className="underline hover:text-foreground transition-colors uppercase tracking-wider font-semibold ml-1">
+            ΕΠΙΚΟΙΝΩΝΙΑ
+          </a>
+        </div>
       </div>
     </motion.form>
   );

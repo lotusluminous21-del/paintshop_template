@@ -63,8 +63,9 @@ export default function PipelineDrawer({
 
         switch (stepId) {
             case 'raw':
-                if (s === ProductState.IMPORTED) return 'pending';
+                if (s === ProductState.IMPORTED || s === ProductState.IGNORED) return 'pending';
                 if (s === ProductState.RAW_INGESTED || s === ProductState.BATCH_GENERATING) return 'loading';
+                if (s === ProductState.NEEDS_MANUAL_DATA) return 'review';
                 return 'complete';
             case 'metadata':
                 if ([ProductState.IMPORTED, ProductState.RAW_INGESTED, ProductState.BATCH_GENERATING].includes(s)) return 'pending';
@@ -127,11 +128,12 @@ export default function PipelineDrawer({
     const [aiTitle, setAiTitle] = useState(product.ai_data?.title || "");
     const [aiBrand, setAiBrand] = useState(product.ai_data?.brand || "");
     const [aiDesc, setAiDesc] = useState(product.ai_data?.description || "");
-    const [aiType, setAiType] = useState(product.ai_data?.type === "Σπρέι Βαφής" ? "" : (product.ai_data?.type || ""));
-    const [aiCategory, setAiCategory] = useState(product.ai_data?.category || "");
+    const [aiType, setAiType] = useState(product.ai_data?.product_type || (product.ai_data?.type === "Σπρέι Βαφής" ? "" : (product.ai_data?.type || "")) || (!["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"].includes(product.ai_data?.category || "") ? (product.ai_data?.category || "") : ""));
+    const [aiCategory, setAiCategory] = useState(product.ai_data?.project_category || (["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"].includes(product.ai_data?.category || "") ? product.ai_data?.category : "") || "");
     const [aiTags, setAiTags] = useState<string[]>(product.ai_data?.tags || []);
     const [variants, setVariants] = useState<any[]>(product.ai_data?.variants || []);
     const [techSpecs, setTechSpecs] = useState<any>(product.ai_data?.technical_specs || {});
+    const [manualSearchQuery, setManualSearchQuery] = useState(product.search_query || product.pylon_data?.name || "");
 
     // Flagged fields from QA cross-validation
     const flaggedFields = product.ai_data?.flagged_fields || [];
@@ -146,11 +148,12 @@ export default function PipelineDrawer({
             setAiTitle(product.ai_data?.title || "");
             setAiBrand(product.ai_data?.brand || "");
             setAiDesc(product.ai_data?.description || "");
-            setAiType(product.ai_data?.type === "Σπρέι Βαφής" ? "" : (product.ai_data?.type || ""));
-            setAiCategory(product.ai_data?.category || "");
+            setAiType(product.ai_data?.product_type || (product.ai_data?.type === "Σπρέι Βαφής" ? "" : (product.ai_data?.type || "")) || (!["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"].includes(product.ai_data?.category || "") ? (product.ai_data?.category || "") : ""));
+            setAiCategory(product.ai_data?.project_category || (["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"].includes(product.ai_data?.category || "") ? product.ai_data?.category : "") || "");
             setAiTags(product.ai_data?.tags || []);
             setVariants(product.ai_data?.variants || []);
             setTechSpecs(product.ai_data?.technical_specs || {});
+            setManualSearchQuery(product.search_query || product.pylon_data?.name || "");
             prevProductIdRef.current = product.id;
         }
     }, [product.id]);
@@ -160,8 +163,8 @@ export default function PipelineDrawer({
         aiTitle !== (product.ai_data?.title || "") ||
         aiBrand !== (product.ai_data?.brand || "") ||
         aiDesc !== (product.ai_data?.description || "") ||
-        aiType !== (product.ai_data?.type === "Σπρέι Βαφής" ? "" : (product.ai_data?.type || "")) ||
-        aiCategory !== (product.ai_data?.category || "") ||
+        aiType !== (product.ai_data?.product_type || (product.ai_data?.type === "Σπρέι Βαφής" ? "" : (product.ai_data?.type || "")) || (!["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"].includes(product.ai_data?.category || "") ? (product.ai_data?.category || "") : "")) ||
+        aiCategory !== (product.ai_data?.project_category || (["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"].includes(product.ai_data?.category || "") ? product.ai_data?.category : "") || "") ||
         JSON.stringify(aiTags) !== JSON.stringify(product.ai_data?.tags || []) ||
         JSON.stringify(techSpecs) !== JSON.stringify(product.ai_data?.technical_specs || {});
 
@@ -177,7 +180,9 @@ export default function PipelineDrawer({
             "ai_data.brand": aiBrand,
             "ai_data.description": aiDesc,
             "ai_data.type": aiType,
+            "ai_data.product_type": aiType,
             "ai_data.category": aiCategory,
+            "ai_data.project_category": aiCategory,
             "ai_data.tags": aiTags,
             "ai_data.variants": variants,
             "ai_data.technical_specs": techSpecs,
@@ -207,6 +212,56 @@ export default function PipelineDrawer({
         } catch (e) {
             console.error(e);
             alert("Failed to save metadata.");
+        }
+    };
+
+    const handleApplyQASuggestions = async () => {
+        if (!db) return;
+        const suggestions = product.ai_data?.qa_suggestions;
+        if (!suggestions || Object.keys(suggestions).length === 0) return;
+
+        let updatedTechSpecs = { ...techSpecs };
+        for (const [key, value] of Object.entries(suggestions)) {
+            if (!['title', 'brand', 'type', 'category', 'description', 'tags'].includes(key)) {
+                updatedTechSpecs[key] = value;
+            }
+        }
+
+        let targetStatus = product.status;
+        let payload: any = {
+            "ai_data.title": suggestions.title !== undefined ? suggestions.title : aiTitle,
+            "ai_data.brand": suggestions.brand !== undefined ? suggestions.brand : aiBrand,
+            "ai_data.description": suggestions.description !== undefined ? suggestions.description : aiDesc,
+            "ai_data.type": suggestions.product_type !== undefined ? suggestions.product_type : (suggestions.type !== undefined ? suggestions.type : aiType),
+            "ai_data.product_type": suggestions.product_type !== undefined ? suggestions.product_type : (suggestions.type !== undefined ? suggestions.type : aiType),
+            "ai_data.category": suggestions.project_category !== undefined ? suggestions.project_category : (suggestions.category !== undefined ? suggestions.category : aiCategory),
+            "ai_data.project_category": suggestions.project_category !== undefined ? suggestions.project_category : (suggestions.category !== undefined ? suggestions.category : aiCategory),
+            "ai_data.tags": suggestions.tags !== undefined ? suggestions.tags : aiTags,
+            "ai_data.variants": variants,
+            "ai_data.technical_specs": updatedTechSpecs,
+            "ai_data.flagged_fields": [],
+            "ai_data.qa_suggestions": deleteField(),
+            enrichment_message: "QA Suggestions applied automatically."
+        };
+
+        const studioComplete = getStepState('studio') === 'complete';
+
+        if (product.status === ProductState.NEEDS_METADATA_REVIEW) {
+            targetStatus = ProductState.RESOLVING_VARIANTS;
+            payload.status = targetStatus;
+        } else if (studioComplete) {
+            targetStatus = ProductState.GENERATING_STUDIO;
+            payload.status = targetStatus;
+            payload["ai_data.generated_images"] = deleteField();
+            payload["ai_data.images"] = deleteField();
+            payload.enrichment_message = "QA Suggestions applied. Re-rendering visuals...";
+        }
+
+        try {
+            await updateDoc(doc(db!, "staging_products", product.id), payload);
+        } catch (e) {
+            console.error(e);
+            alert("Failed to apply QA suggestions.");
         }
     };
 
@@ -407,10 +462,97 @@ export default function PipelineDrawer({
 
                                             {/* --- RAW STEP --- */}
                                             {step.id === 'raw' && (
-                                                <div className="space-y-2">
-                                                    <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pylon Source Data</h3>
-                                                    <div className="bg-zinc-50 rounded-md border border-zinc-200 p-2 text-[10px] font-mono text-zinc-500 whitespace-pre-wrap overflow-x-auto max-h-[150px]">
-                                                        {JSON.stringify(product.pylon_data, null, 2)}
+                                                <div className="space-y-4">
+                                                    {product.status === ProductState.NEEDS_MANUAL_DATA && (
+                                                        <div className="flex flex-col gap-3 p-3 bg-amber-50 rounded text-amber-800 text-xs border border-amber-200 max-w-full overflow-hidden">
+                                                            <div className="flex flex-col gap-2 mt-2 mb-2">
+                                                                <div className="flex items-start gap-2">
+                                                                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="font-semibold break-words">Data Unsearchable</p>
+                                                                        <p className="mt-0.5 text-amber-700 break-words">
+                                                                            This product was blocked by the Gatekeeper because its ERP name is too generic to run automated Google Search enrichment (Score: {Math.round((product.ai_data?.searchability_score || 0) * 100)}%). Select a smart AI suggestion below or provide a more specific search term manually here.
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* AI Search Suggestions Grid */}
+                                                                {product.ai_data?.search_suggestions && product.ai_data.search_suggestions.length > 0 && (
+                                                                    <div className="flex flex-col gap-2 mt-3">
+                                                                        <p className="text-[10px] font-bold text-amber-800/80 uppercase tracking-widest pl-1">AI Suggestions</p>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                                                            {product.ai_data.search_suggestions.map((sug, idx) => (
+                                                                                <Button
+                                                                                    key={idx}
+                                                                                    variant="outline"
+                                                                                    className="h-auto min-h-[56px] py-2 px-3 flex flex-col items-start justify-center bg-white/70 border-amber-300 shadow-sm hover:bg-amber-100 hover:border-amber-400 hover:shadow transition-all text-left whitespace-normal leading-tight"
+                                                                                    onClick={async () => {
+                                                                                        if (!db) return;
+                                                                                        try {
+                                                                                            await updateDoc(doc(db, "staging_products", product.id), {
+                                                                                                "search_query": sug.term.trim(),
+                                                                                                "status": ProductState.GENERATING_METADATA,
+                                                                                                "enrichment_message": "Suggestion selected. Resuming pipeline..."
+                                                                                            });
+                                                                                        } catch (e) {
+                                                                                            console.error(e);
+                                                                                            alert("Failed to update search query and resume pipeline.");
+                                                                                        }
+                                                                                    }}
+                                                                                >
+                                                                                    <span className="text-zinc-900 font-semibold text-xs inline-block pb-0.5 truncate w-full" title={sug.term}>{sug.term}</span>
+                                                                                    <span className="text-[10px] text-amber-700/80 font-medium">{Math.round(sug.confidence * 100)}% Match</span>
+                                                                                </Button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex items-center gap-2 mt-1 relative pt-3 border-t border-amber-200/50">
+                                                                <div className="absolute -top-[9px] left-3 bg-amber-50 px-2 text-[10px] text-amber-600/60 font-medium tracking-wide">OR ENTER MANUALLY</div>
+                                                                <Input 
+                                                                    value={manualSearchQuery} 
+                                                                    onChange={e => setManualSearchQuery(e.target.value)} 
+                                                                    placeholder="e.g. HB Body 980 Primer Grey 400ml" 
+                                                                    className="flex-1 h-9 bg-white border-amber-300 focus-visible:ring-amber-500 placeholder:text-amber-300 shadow-sm"
+                                                                />
+                                                                <Button 
+                                                                    size="sm" 
+                                                                    className="h-9 px-4 bg-amber-600 hover:bg-amber-700 text-white shadow-sm font-medium"
+                                                                    disabled={!manualSearchQuery.trim() || manualSearchQuery.trim() === product.pylon_data?.name}
+                                                                    onClick={async () => {
+                                                                        if (!db) return;
+                                                                        try {
+                                                                            await updateDoc(doc(db, "staging_products", product.id), {
+                                                                                "search_query": manualSearchQuery.trim(),
+                                                                                "status": ProductState.GENERATING_METADATA,
+                                                                                "enrichment_message": "Manual search term provided. Resuming pipeline..."
+                                                                            });
+                                                                        } catch (e) {
+                                                                            console.error(e);
+                                                                            alert("Failed to update search query and resume pipeline.");
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <CheckCircle2 className="w-4 h-4 mr-2" /> Quickfix
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {product.status === ProductState.IGNORED && (
+                                                        <div className="flex items-start gap-2 p-2 bg-zinc-50 rounded text-zinc-600 text-xs border border-zinc-200 max-w-full overflow-hidden">
+                                                            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-zinc-400" />
+                                                            <div className="flex-1 min-w-0 break-words">
+                                                                <strong>Ignored Item</strong> - This item was flagged as non-retail (e.g. shipping fees, services) by the Gatekeeper. It will not be processed further.
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <div className="space-y-2">
+                                                        <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pylon Source Data</h3>
+                                                        <div className="bg-zinc-50 rounded-md border border-zinc-200 p-2 text-[10px] font-mono text-zinc-500 whitespace-pre-wrap overflow-x-auto max-h-[150px]">
+                                                            {JSON.stringify(product.pylon_data, null, 2)}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
@@ -434,12 +576,21 @@ export default function PipelineDrawer({
 
                                                     {/* QA Reasoning Banner */}
                                                     {product.ai_data?.qa_reasoning && flaggedFields.length > 0 && (
-                                                        <div className="flex items-start gap-2 p-2 bg-amber-50 rounded text-amber-800 text-xs border border-amber-200 max-w-full overflow-hidden">
-                                                            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="font-semibold break-words">QA Review ({Math.round((product.ai_data?.confidence_score || 0) * 100)}% confidence)</p>
-                                                                <p className="mt-0.5 text-amber-700 break-words">{product.ai_data.qa_reasoning}</p>
+                                                        <div className="flex flex-col gap-2 p-2 bg-amber-50 rounded text-amber-800 text-xs border border-amber-200 max-w-full overflow-hidden">
+                                                            <div className="flex items-start gap-2">
+                                                                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="font-semibold break-words">QA Review ({Math.round((product.ai_data?.confidence_score || 0) * 100)}% confidence)</p>
+                                                                    <p className="mt-0.5 text-amber-700 break-words">{product.ai_data.qa_reasoning}</p>
+                                                                </div>
                                                             </div>
+                                                            {product.ai_data.qa_suggestions && Object.keys(product.ai_data.qa_suggestions).length > 0 && (
+                                                                <div className="flex justify-end border-t border-amber-200/50 pt-2 mt-1">
+                                                                    <Button size="sm" onClick={handleApplyQASuggestions} className="h-7 text-[10px] bg-amber-600 hover:bg-amber-700 text-white shadow-sm font-medium px-3">
+                                                                        <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Apply Suggestions ✨
+                                                                    </Button>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
 
@@ -557,6 +708,9 @@ export default function PipelineDrawer({
                                                                     { key: 'chemical_base', label: 'Chemical Base', options: ["Ακρυλικό", "Σμάλτο", "Λάκα", "Ουρεθάνη", "Εποξικό", "Νερού", "Διαλύτου", "Άλλο"] },
                                                                     { key: 'finish', label: 'Finish', options: ["Ματ", "Σατινέ", "Γυαλιστερό", "Υψηλής Γυαλάδας", "Σαγρέ/Ανάγλυφο", "Μεταλλικό", "Πέρλα", "Άλλο"] },
                                                                     { key: 'sequence_step', label: 'Sequence Step', options: ["Προετοιμασία/Καθαριστικό", "Αστάρι", "Ενισχυτικό Πρόσφυσης", "Βασικό Χρώμα", "Βερνίκι", "Γυαλιστικό", "Άλλο"] },
+                                                                    { key: 'environment', label: 'Environment', options: ["Εσωτερικός Χώρος", "Εξωτερικός Χώρος", "Και τα δύο"] },
+                                                                    { key: 'coverage', label: 'Coverage' },
+                                                                    { key: 'drying_time', label: 'Drying Time' },
                                                                     { key: 'drying_time_touch', label: 'Drying Time Touch' },
                                                                     { key: 'recoat_window', label: 'Recoat Window' },
                                                                     { key: 'full_cure', label: 'Full Cure' },
@@ -592,7 +746,8 @@ export default function PipelineDrawer({
                                                                 {[
                                                                     { key: 'surface_suitability', label: 'Surface Suitability', options: ["Γυμνό Μέταλλο", "Πλαστικό", "Ξύλο", "Fiberglass", "Υπάρχον Χρώμα", "Σκουριά", "Αλουμίνιο", "Γαλβανιζέ", "Άλλο"] },
                                                                     { key: 'special_properties', label: 'Special Properties', options: ["Υψηλής Θερμοκρασίας", "Ανθεκτικό σε UV", "Αντισκωριακό", "2 Συστατικών", "1 Συστατικού"] },
-                                                                    { key: 'application_method', label: 'Application Method', options: ["Σπρέι", "Πιστόλι Βαφής", "Πινέλο", "Ρολό", "Άλλο"] }
+                                                                    { key: 'application_method', label: 'Application Method', options: ["Σπρέι", "Πιστόλι Βαφής", "Πινέλο", "Ρολό", "Άλλο"] },
+                                                                    { key: 'durability_features', label: 'Durability Features', options: ["Αντισκωριακό", "Πλενόμενο", "Αντοχή σε UV", "Αντοχή σε Χημικά", "Αντοχή σε Γρατζουνιές", "Άλλο"] }
                                                                 ].map(field => (
                                                                     <div key={field.key} className="col-span-2 space-y-1 pt-1">
                                                                         <label className="text-[9px] font-semibold text-zinc-400 uppercase">{field.label}</label>
@@ -678,7 +833,12 @@ export default function PipelineDrawer({
                                                             {(() => {
                                                                 const axisGroups: Record<string, { axisName: string, items: { variant: any, originalIndex: number }[] }> = {};
                                                                 variants.forEach((v, i) => {
-                                                                    const axis = v.option1_name || v.option2_name || 'Ungrouped';
+                                                                    const axisParts = [];
+                                                                    if (v.option1_name) axisParts.push(v.option1_name);
+                                                                    if (v.option2_name) axisParts.push(v.option2_name);
+                                                                    if (v.option3_name) axisParts.push(v.option3_name);
+                                                                    const axis = axisParts.length > 0 ? axisParts.join(" + ") : 'Ungrouped';
+                                                                    
                                                                     if (!axisGroups[axis]) axisGroups[axis] = { axisName: axis, items: [] };
                                                                     axisGroups[axis].items.push({ variant: v, originalIndex: i });
                                                                 });
@@ -689,16 +849,39 @@ export default function PipelineDrawer({
                                                                             <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">{group.axisName}</span>
                                                                             <span className="text-[9px] bg-zinc-100 text-zinc-500 px-1.5 py-0.5 rounded-full">{group.items.length}</span>
                                                                         </div>
-                                                                        {group.items.map(({ variant: v, originalIndex: i }) => (
+                                                                        {group.items.map(({ variant: v, originalIndex: i }) => {
+                                                                            const numOptions = (v.option1_name ? 1 : 0) + (v.option2_name ? 1 : 0) + (v.option3_name ? 1 : 0);
+                                                                            const cols = numOptions === 3 ? '1fr 1fr 1fr 1fr 65px' : numOptions === 2 ? '1fr 1fr 1fr 65px' : '1fr 1fr 65px';
+                                                                            
+                                                                            return (
                                                                             <div key={i} className="flex items-center gap-2 p-2 bg-zinc-50 border border-zinc-200 rounded-md">
-                                                                                <div className="grid grid-cols-[1fr_1fr_65px] gap-2 flex-1">
+                                                                                <div className="grid gap-2 flex-1" style={{ gridTemplateColumns: cols }}>
                                                                                     <Input value={v.sku_suffix} onChange={e => { const nv = [...variants]; nv[i].sku_suffix = e.target.value; setVariants(nv); }} placeholder="SKU / Suffix" className="h-7 text-[10px] font-mono" />
-                                                                                    <Input value={v.option1_value || v.option2_value || ''} onChange={e => {
-                                                                                        const nv = [...variants];
-                                                                                        if (nv[i].option1_name) nv[i].option1_value = e.target.value;
-                                                                                        else if (nv[i].option2_name) nv[i].option2_value = e.target.value;
-                                                                                        setVariants(nv);
-                                                                                    }} placeholder="Option Value" className="h-7 text-[10px]" />
+                                                                                    
+                                                                                    {v.option1_name && (
+                                                                                        <Input value={v.option1_value || ''} onChange={e => {
+                                                                                            const nv = [...variants]; nv[i].option1_value = e.target.value; setVariants(nv);
+                                                                                        }} placeholder={v.option1_name} title={v.option1_name} className="h-7 text-[10px]" />
+                                                                                    )}
+                                                                                    
+                                                                                    {v.option2_name && (
+                                                                                        <Input value={v.option2_value || ''} onChange={e => {
+                                                                                            const nv = [...variants]; nv[i].option2_value = e.target.value; setVariants(nv);
+                                                                                        }} placeholder={v.option2_name} title={v.option2_name} className="h-7 text-[10px]" />
+                                                                                    )}
+                                                                                    
+                                                                                    {v.option3_name && (
+                                                                                        <Input value={v.option3_value || ''} onChange={e => {
+                                                                                            const nv = [...variants]; nv[i].option3_value = e.target.value; setVariants(nv);
+                                                                                        }} placeholder={v.option3_name} title={v.option3_name} className="h-7 text-[10px]" />
+                                                                                    )}
+
+                                                                                    {(!v.option1_name && !v.option2_name && !v.option3_name) && (
+                                                                                        <Input value={v.option1_value || ''} onChange={e => {
+                                                                                            const nv = [...variants]; nv[i].option1_value = e.target.value; setVariants(nv);
+                                                                                        }} placeholder="Option Value" className="h-7 text-[10px]" />
+                                                                                    )}
+
                                                                                     <div className="relative">
                                                                                         <span className="absolute left-2 text-[10px] text-zinc-400 top-1/2 -translate-y-1/2">€</span>
                                                                                         <Input type="number" step="0.01" value={v.price ?? ''} onChange={e => {
@@ -714,7 +897,7 @@ export default function PipelineDrawer({
                                                                                     <Trash2 className="w-3 h-3" />
                                                                                 </Button>
                                                                             </div>
-                                                                        ))}
+                                                                        )})}
                                                                     </div>
                                                                 ));
                                                             })()}

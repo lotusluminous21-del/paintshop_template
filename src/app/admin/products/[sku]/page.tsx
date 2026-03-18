@@ -41,6 +41,9 @@ interface StagingProduct {
         title?: string;
         description?: string;
         category?: string;
+        type?: string;
+        product_type?: string;
+        project_category?: string;
         tags?: string[];
         technical_specs?: Record<string, any>;
         attributes?: Record<string, any>;
@@ -59,6 +62,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ sku: s
     const router = useRouter();
     const [product, setProduct] = useState<StagingProduct | null>(null);
     const [loading, setLoading] = useState(true);
+    const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
     useEffect(() => {
         const fetchProduct = async () => {
             if (!db) return;
@@ -98,7 +102,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ sku: s
     }
 
     const baseStudioImg = product.ai_data?.images?.find((img) => img.suffix === 'base' || img.suffix?.toLowerCase() === 'base' || !img.suffix)?.url;
-    const mainImage = product.ai_data?.generated_images?.base || product.ai_data?.selected_images?.base || baseStudioImg || product.ai_data?.images?.[0]?.url || product.ai_data?.variant_images?.base?.[0]?.url;
+    const defaultImage = baseStudioImg || product.ai_data?.generated_images?.base || product.ai_data?.images?.[0]?.url || product.ai_data?.selected_images?.base || product.ai_data?.variant_images?.base?.[0]?.url;
+    const mainImage = selectedImagePreview || defaultImage;
     const isPublished = !!product.shopify_product_id;
 
     return (
@@ -148,18 +153,25 @@ export default function ProductDetailPage({ params }: { params: Promise<{ sku: s
 
                         {/* Thumbnails */}
                         {(() => {
-                            const images = [];
-                            if (mainImage) images.push({ url: mainImage });
-                            if (product.ai_data?.images) {
-                                product.ai_data.images.forEach(img => {
-                                    if (img.url !== mainImage) images.push(img);
-                                });
-                            }
+                            const imageSet = new Set<string>();
+                            const images: {url: string}[] = [];
+                            
+                            const addImage = (url: string | undefined) => {
+                                if (url && !imageSet.has(url)) {
+                                    imageSet.add(url);
+                                    images.push({ url });
+                                }
+                            };
+
+                            addImage(baseStudioImg);
+                            addImage(product.ai_data?.generated_images?.base);
+                            addImage(product.ai_data?.selected_images?.base);
+
                             if (images.length > 0) {
                                 return (
                                     <div className="grid grid-cols-4 gap-2">
                                         {images.map((img, i) => (
-                                            <div key={i} className="aspect-square rounded-md border border-zinc-200 bg-white overflow-hidden cursor-pointer hover:border-zinc-400 transition-colors p-1">
+                                            <div key={i} onClick={() => setSelectedImagePreview(img.url)} className={cn("aspect-square rounded-md bg-white overflow-hidden cursor-pointer hover:border-zinc-400 transition-colors p-1", mainImage === img.url ? "border-2 border-zinc-900 shadow-sm" : "border border-zinc-200")}>
                                                 <img src={img.url} className="w-full h-full object-cover rounded-sm mix-blend-multiply" />
                                             </div>
                                         ))}
@@ -204,32 +216,38 @@ export default function ProductDetailPage({ params }: { params: Promise<{ sku: s
                                 <div className="text-[10px] text-zinc-400 font-mono">Original: {product.pylon_data.name}</div>
                             </div>
 
-                            <div className="grid grid-cols-3 gap-6">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-semibold text-zinc-900">Category</label>
+                                    <label className="text-xs font-semibold text-zinc-900">Product Type</label>
+                                    <div className="text-[13px] bg-zinc-50 border border-zinc-200 h-9 px-3 py-2 rounded-md flex items-center shadow-sm">
+                                        {product.ai_data?.product_type || product.ai_data?.type || product.ai_data?.category || "Uncategorized"}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-zinc-900">Project Category</label>
                                     <div className="flex items-center gap-3">
-                                        <div className="relative w-12 h-12 shrink-0">
+                                        <div className="relative w-9 h-9 shrink-0">
                                             <Image
-                                                src={getCategoryImage(product.ai_data?.category || "")}
-                                                alt={product.ai_data?.category || "Uncategorized"}
+                                                src={getCategoryImage(product.ai_data?.project_category || (["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"].includes(product.ai_data?.category || "") ? product.ai_data?.category : "") || "")}
+                                                alt={product.ai_data?.project_category || "Uncategorized"}
                                                 fill
                                                 className="object-contain drop-shadow-[2px_4px_8px_rgba(0,0,0,0.1)]"
                                             />
                                         </div>
-                                        <div className="text-sm bg-zinc-50 border border-zinc-200 h-9 px-3 py-2 rounded-md flex-1 flex items-center">
-                                            {product.ai_data?.category || "Uncategorized"}
+                                        <div className="text-[13px] bg-zinc-50 border border-zinc-200 h-9 px-3 py-2 rounded-md flex-1 flex items-center shadow-sm whitespace-nowrap overflow-hidden text-ellipsis">
+                                            {product.ai_data?.project_category || (["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"].includes(product.ai_data?.category || "") ? product.ai_data?.category : "") || "Uncategorized"}
                                         </div>
                                     </div>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-semibold text-zinc-900">Retail Price (€)</label>
-                                    <div className="text-sm bg-zinc-50 border border-zinc-200 h-9 px-3 py-2 rounded-md">
+                                    <div className="text-[13px] bg-zinc-50 border border-zinc-200 h-9 px-3 py-2 rounded-md">
                                         {(product.pylon_data.price_retail || 0).toFixed(2)}
                                     </div>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-semibold text-zinc-900">Wholesale Price (€)</label>
-                                    <div className="text-sm bg-zinc-50 border border-zinc-200 h-9 px-3 py-2 rounded-md">
+                                    <div className="text-[13px] bg-zinc-50 border border-zinc-200 h-9 px-3 py-2 rounded-md">
                                         {(product.pylon_data.price_bulk || 0).toFixed(2)}
                                     </div>
                                 </div>

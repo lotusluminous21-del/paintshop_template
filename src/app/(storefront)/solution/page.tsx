@@ -46,12 +46,33 @@ export default function SolutionPage() {
         return Object.values(actualPrices).reduce((sum, price) => sum + price, 0);
     }, [actualPrices]);
 
+    // Normalize V3 (steps) and V4 (sub_projects) structures into a single flat array
+    const normalizedSteps = useMemo(() => {
+        if (!solution) return [];
+        if (solution.steps && solution.steps.length > 0) return solution.steps;
+        if (solution.sub_projects && solution.sub_projects.length > 0) {
+            let currentOrder = 1;
+            const flat: any[] = [];
+            solution.sub_projects.forEach((sp: any) => {
+                sp.steps.forEach((st: any) => {
+                    flat.push({
+                        ...st,
+                        order: currentOrder++,
+                        title: `${sp.label ? sp.label + ' - ' : ''}${st.title}`
+                    });
+                });
+            });
+            return flat;
+        }
+        return [];
+    }, [solution]);
+
     // Collect all unique products from all steps for the Recommended Products section
     const allProducts = useMemo(() => {
         if (!solution) return [];
         const seen = new Set<string>();
-        const products: { stepOrder: number; handle: string; variantId?: string; title?: string; variantTitle?: string; isCustomPaint?: boolean; customColorInfo?: { color_system: string; color_code: string; notes?: string } }[] = [];
-        solution.steps.forEach(step => {
+        const products: { stepOrder: number; handle: string; variantId?: string; title?: string; variantTitle?: string; isCustomPaint?: boolean; customColorInfo?: { color_system: string; color_code: string; notes?: string }; isAlternative?: boolean; reason?: string; matchScore?: number }[] = [];
+        normalizedSteps.forEach(step => {
             if ((step.selected_products?.length ?? 0) > 0) {
                 (step.selected_products || []).forEach((p: any, pIdx: number) => {
                     const key = `${p.handle}-${pIdx}`;
@@ -76,15 +97,53 @@ export default function SolutionPage() {
                     }
                 });
             }
+
+            if ((step.alternatives?.length ?? 0) > 0) {
+                (step.alternatives || []).forEach((p: any, pIdx: number) => {
+                    const key = `alt-${p.handle}-${pIdx}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        products.push({
+                            stepOrder: step.order,
+                            handle: p.handle,
+                            variantId: p.variant_id,
+                            title: p.product_title,
+                            variantTitle: p.variant_title,
+                            isCustomPaint: false,
+                            isAlternative: true,
+                            reason: p.reason,
+                            matchScore: p.match_score,
+                        });
+                    }
+                });
+            }
         });
+
+        // Add shared products from V4
+        if (solution.shared_products) {
+            (solution.shared_products || []).forEach((p: any, pIdx: number) => {
+                const key = `shared-${p.handle}-${pIdx}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    products.push({
+                        stepOrder: 9999, // Shared products go at the end
+                        handle: p.handle,
+                        variantId: p.variant_id,
+                        title: p.product_title,
+                        isCustomPaint: false,
+                    });
+                }
+            });
+        }
+        
         return products;
-    }, [solution]);
+    }, [solution, normalizedSteps]);
 
     // All safety warnings collected from all steps
     const allWarnings = useMemo(() => {
         if (!solution) return [];
-        return solution.steps.flatMap(step => step.warnings || []);
-    }, [solution]);
+        return normalizedSteps.flatMap(step => step.warnings || []);
+    }, [solution, normalizedSteps]);
 
     const toggleStep = (stepOrder: number) => {
         setExpandedSteps(prev =>
@@ -168,7 +227,7 @@ export default function SolutionPage() {
                                         { label: 'Project Type', value: solution.projectType },
                                         { label: 'Est. Duration', value: solution.estimatedTime },
                                         { label: 'Difficulty', value: solution.difficulty ? solution.difficulty.charAt(0).toUpperCase() + solution.difficulty.slice(1) : 'N/A' },
-                                        { label: 'Phases', value: `${solution.steps.length} Steps` },
+                                        { label: 'Phases', value: `${normalizedSteps.length} Steps` },
                                     ].map((item, i) => (
                                         <div
                                             key={i}
@@ -230,15 +289,15 @@ export default function SolutionPage() {
                                 <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-secondary/40">
                                     <h3 className="text-sm font-bold uppercase tracking-widest text-foreground">Step-by-Step Guideline</h3>
                                     <span className="text-[10px] font-bold px-2 py-1 bg-secondary border border-border text-muted-foreground rounded uppercase tracking-widest">
-                                        {solution.steps.length} Phases
+                                        {normalizedSteps.length} Phases
                                     </span>
                                 </div>
 
                                 {/* Steps */}
                                 <div className="p-6 space-y-10">
-                                    {solution.steps.map((step, idx) => {
+                                    {normalizedSteps.map((step, idx) => {
                                         const isExpanded = expandedSteps.includes(step.order);
-                                        const isLast = idx === solution.steps.length - 1;
+                                        const isLast = idx === normalizedSteps.length - 1;
 
                                         return (
                                             <div key={step.order} className={cn('flex gap-5 relative', !isLast && 'pb-2')}>
@@ -285,7 +344,7 @@ export default function SolutionPage() {
                                                                     Tech Note
                                                                 </div>
                                                                 <ul className="space-y-1">
-                                                                    {step.tips.map((tip, i) => (
+                                                                    {step.tips.map((tip: string, i: number) => (
                                                                         <li key={i} className="text-xs text-muted-foreground leading-relaxed">{tip}</li>
                                                                     ))}
                                                                 </ul>
@@ -300,7 +359,7 @@ export default function SolutionPage() {
                                                                     Safety Warning
                                                                 </div>
                                                                 <ul className="space-y-1">
-                                                                    {step.warnings.map((w, i) => (
+                                                                    {step.warnings.map((w: string, i: number) => (
                                                                         <li key={i} className="text-xs text-muted-foreground">{w}</li>
                                                                     ))}
                                                                 </ul>
@@ -342,6 +401,48 @@ export default function SolutionPage() {
                                                                 </div>
                                                             </div>
                                                         )}
+
+                                                        {/* Alternatives */}
+                                                        {((step.alternatives?.length ?? 0) > 0) && (
+                                                            <div className="space-y-4 mt-6 p-4 bg-accent/5 border border-accent/20 rounded-lg">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Lightbulb className="w-4 h-4 text-accent" />
+                                                                    <p className="text-xs font-bold text-accent uppercase tracking-widest">Alternative Options</p>
+                                                                </div>
+                                                                <div className="space-y-3">
+                                                                    {(step.alternatives || []).map((alt: any, aIdx: number) => (
+                                                                        <div key={aIdx} className="space-y-2">
+                                                                            <div className="flex items-center justify-between pl-1 mb-1">
+                                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                                                                    Compatibility
+                                                                                </span>
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <div className="w-16 h-1.5 bg-secondary rounded-full overflow-hidden">
+                                                                                        <div 
+                                                                                            className="h-full bg-accent" 
+                                                                                            style={{ width: `${alt.match_score || 90}%` }} 
+                                                                                        />
+                                                                                    </div>
+                                                                                    <span className="text-xs font-black text-accent">{alt.match_score || 90}%</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <SolutionProductItem
+                                                                                handle={alt.handle}
+                                                                                suggestedVariantId={alt.variant_id}
+                                                                                fallbackTitle={alt.product_title || alt.handle?.replace(/-/g, ' ').toUpperCase()}
+                                                                                fallbackVariantTitle={alt.variant_title}
+                                                                                onPriceChange={(price: number) => handlePriceChange(`${step.order}-alt-${alt.handle}-${aIdx}`, price)}
+                                                                            />
+                                                                            {alt.reason && (
+                                                                                <p className="text-xs text-muted-foreground pl-14 leading-relaxed bg-background p-2 -mt-1 rounded-b-md border-x border-b border-border shadow-sm">
+                                                                                    {alt.reason}
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -377,7 +478,20 @@ export default function SolutionPage() {
                                     <FadeInUp
                                         key={`${p.handle}-${idx}`}
                                         inStaggerGroup
+                                        className="relative"
                                     >
+                                        {p.isAlternative && (
+                                            <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-accent/90 text-accent-foreground text-[9px] font-black uppercase tracking-widest shadow-sm">
+                                                    Alternative
+                                                </span>
+                                                {p.matchScore && (
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-background/90 text-accent text-[9px] font-black tracking-widest shadow-sm border border-border/50 backdrop-blur-sm">
+                                                        {p.matchScore}% Match
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                         <SolutionProductItem
                                             handle={p.handle}
                                             suggestedVariantId={p.variantId}

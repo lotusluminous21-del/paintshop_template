@@ -116,7 +116,8 @@ def generate_metadata(product_name: str, sku: str, search_results: list) -> dict
         "description_el": "Greek description",
         "short_description": "...",
         "tags": ["tag1", "tag2"],
-        "category": "Main Category",
+        "product_type": "Main Product Type",
+        "project_category": "Main Project Category",
         "variants": [
             {{
                 "sku_suffix": "suffix (e.g. RED)",
@@ -305,7 +306,8 @@ def handle_metadata_phase(product_ref, data, db, force_metadata=False):
             - Δημιούργησε έναν σημασιολογικό (semantic), καθαρό και συνοπτικό τίτλο (title). ΠΡΕΠΕΙ να περιέχει εμφανώς κωδικούς μοντέλων, νούμερα ταυτοποίησης ή την κύρια μάρκα, ώστε να ξεχωρίζει από παρόμοια προϊόντα.
             - Γράψε μια περιγραφή (description) που είναι διαβαστερή, φιλική προς τον πελάτη και συνοψίζει τα τεχνικά χαρακτηριστικά τονίζοντας την κύρια χρήση και τα οφέλη.
             - Σύντομη περιγραφή (short_description) για συλλογές.
-            - ΚΑΤΗΓΟΡΙΑ: Επίλεξε ΑΥΣΤΗΡΑ μία από τις παρακάτω κατηγορίες: "Προετοιμασία & Καθαρισμός", "Αστάρια & Υποστρώματα", "Χρώματα Βάσης", "Βερνίκια & Φινιρίσματα", "Σκληρυντές & Ενεργοποιητές", "Στόκοι & Πλαστελίνες", "Πινέλα & Εργαλεία", "Διαλυτικά & Αραιωτικά", "Αξεσουάρ", "Άλλο".
+            - PRODUCT TYPE (product_type): Επίλεξε ΑΥΣΤΗΡΑ μία από τις παρακάτω κατηγορίες προϊόντων: "Προετοιμασία & Καθαρισμός", "Αστάρια & Υποστρώματα", "Χρώματα Βάσης", "Βερνίκια & Φινιρίσματα", "Σκληρυντές & Ενεργοποιητές", "Στόκοι & Πλαστελίνες", "Πινέλα & Εργαλεία", "Διαλυτικά & Αραιωτικά", "Αξεσουάρ", "Άλλο".
+            - PROJECT CATEGORY (project_category): Επίλεξε ΑΥΣΤΗΡΑ μία από τις παρακάτω κατηγορίες έργου: "Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές".
             - DYNAMIC VARIANTS: Αναζήτησε άξονες παραλλαγών στο κείμενο (π.χ. διαθέσιμα χρώματα στο χρωματολόγιο, συσκευασίες/όγκοι (400ml, 1L), μεγέθη, διαμέτρους μπεκ). Δημιούργησε δυναμικά Options (π.χ. option1_name="Χρώμα", option1_value="Λευκό", option2_name="Όγκος / Συσκευασία", option2_value="400ml") και χτίσε τον πίνακα `variants`.
             - TECHNICAL SPECS: Κατηγοριοποίησε αυστηρά το προϊόν βάσει της χημικής του βάσης (Ακρυλικό, Σμάλτο κλπ), το στάδιο της εφαρμογής (Αστάρι, Βερνίκι κλπ), κατάλληλες επιφάνειες και φινίρισμα. 
             - Βαθύτερα Τεχνικά Χαρακτηριστικά (όπου υπάρχουν): Ειδικό βάρος, πάχος στεγνού φιλμ, αναλογία μίξης (για 2K), voc.
@@ -330,7 +332,8 @@ def handle_metadata_phase(product_ref, data, db, force_metadata=False):
                 "description": structured_data.get("description", ""),
                 "short_description": structured_data.get("short_description", ""),
                 "tags": structured_data.get("tags", []),
-                "category": structured_data.get("category", ""),
+                "product_type": structured_data.get("product_type", ""),
+                "project_category": structured_data.get("project_category", ""),
                 "variants": structured_data.get("variants", []),
                 "attributes": structured_data.get("attributes", {}),
                 "technical_specs": structured_data.get("technical_specs", {}),
@@ -398,7 +401,7 @@ def handle_nano_banana_phase(doc_ref, sku, name, ai_data):
     generation_model = ai_data.get("generation_model", "gemini") # "gemini" or "imagen"
     environment = ai_data.get("environment", "clean")
     
-    category = ai_data.get("category", "Άλλο")
+    product_type = ai_data.get("product_type", "Άλλο")
     variants = ai_data.get("variants", [])
     technical_specs = ai_data.get("technical_specs", {})
     finish_raw = technical_specs.get("finish", "")
@@ -420,23 +423,23 @@ def handle_nano_banana_phase(doc_ref, sku, name, ai_data):
     # Category-specific real-world contextual elements — BOLD and dramatic
     decorative_effect = "a massive slab of fractured raw concrete with exposed steel rebar and rough aggregate, dramatically side-lit to reveal deep texture; thick volumetric petrol-green-tinted fog rolling through the background"
     
-    if category == "Χρώματα Βάσης":
+    if product_type == "Χρώματα Βάσης":
         decorative_effect = "a dramatic cascade of thick, high-viscosity wet paint pouring and pooling around the product's base in the product's own pigment color — visible glossy drip trails, heavy paint rivulets, and a wide spreading puddle catching sharp studio reflections"
-    elif category == "Βερνίκια & Φινιρίσματα":
+    elif product_type == "Βερνίκια & Φινιρίσματα":
         decorative_effect = "a jet-black mirror-finish acrylic pedestal reflecting the product with crystalline clarity; intense caustic light patterns from a hidden light source dancing across the reflective surface, creating dramatic bright-to-dark contrast"
-    elif category == "Στόκοι & Πλαστελίνες":
+    elif product_type == "Στόκοι & Πλαστελίνες":
         decorative_effect = "a cracked, heavily textured concrete block with deep fissures revealing raw substrate layers; a thick spread of fresh filler compound applied with visible trowel marks on one face; clouds of fine powder dust suspended and dramatically backlit"
-    elif category == "Πινέλα & Εργαλεία":
+    elif product_type == "Πινέλα & Εργαλεία":
         decorative_effect = "thick, aggressive paint strokes in vivid petrol green and raw umber slashed across a dark slate surface beneath and around the product — heavy impasto texture with visible bristle marks, paint-loaded drips, and bold gestural energy"
-    elif category == "Αξεσουάρ":
+    elif product_type == "Αξεσουάρ":
         decorative_effect = "a precision-machined dark steel industrial platform with CNC-milled grooves and chamfered edges; intense specular highlights from edge lighting creating sharp bright lines against the dark metal"
-    elif category == "Διαλυτικά & Αραιωτικά":
+    elif product_type == "Διαλυτικά & Αραιωτικά":
         decorative_effect = "dramatic plumes of dense vapor rising from the product base, backlit by a sharp petrol-green-gelled light source creating visible light rays through the vapor; the product sits on a dark chemical-resistant borosilicate glass surface with visible caustic refractions"
-    elif category == "Προετοιμασία & Καθαρισμός":
+    elif product_type == "Προετοιμασία & Καθαρισμός":
         decorative_effect = "a high-impact frozen splash of crystal-clear water exploding upward from a dark polished surface near the product — individual droplets suspended mid-air catching pin-sharp highlights, with a spreading ripple pattern on the wet surface"
-    elif category == "Σκληρυντές & Ενεργοποιητές":
+    elif product_type == "Σκληρυντές & Ενεργοποιητές":
         decorative_effect = "intense, razor-sharp beams of white light slicing through dense petrol-green atmospheric haze around the product; the product sits on dark tempered glass with a vivid hot-orange glow at its base suggesting an exothermic chemical reaction"
-    elif category == "Αστάρια & Υποστρώματα":
+    elif product_type == "Αστάρια & Υποστρώματα":
         decorative_effect = "a dramatically split cross-section pedestal showing thick, clearly distinct coating layers — raw rusted steel substrate, grey primer coat, and glossy topcoat — each layer sharply delineated and side-lit to emphasize depth and material contrast"
 
     sizing_instruction = "The product must be tightly center-framed, occupying exactly 80% of the vertical canvas height."

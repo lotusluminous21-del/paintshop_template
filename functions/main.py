@@ -134,9 +134,10 @@ def expert_chat_v2(req: https_fn.CallableRequest) -> dict:
         print(f"Error in expert_chat_v2 wrapper: {e}")
         return {"error": str(e)}
 
-# --- 7c. Expert Paint Advisor V3 - Manual Solution Finalization ---
-@https_fn.on_call(region="europe-west1", memory=options.MemoryOption.MB_512, timeout_sec=120)
-def generate_expert_solution_v3(req: https_fn.CallableRequest) -> dict:
+# --- 7c. Expert Paint Advisor V4 - Manual Solution Pipeline ---
+@https_fn.on_call(region="europe-west1", memory=options.MemoryOption.GB_1, timeout_sec=300)
+def generate_expert_solution_v4(req: https_fn.CallableRequest) -> dict:
+    """V4: Runs the full 4-stage pipeline (Query Planner → Retriever → Synthesizer)."""
     try:
         data = req.data
         session_id = data.get("sessionId")
@@ -158,18 +159,16 @@ def generate_expert_solution_v3(req: https_fn.CallableRequest) -> dict:
             
         session_data = doc_snap.to_dict() or {}
         messages = session_data.get("messages", [])
-        accumulated = session_data.get("accumulatedProducts", {})
         
-        if not accumulated:
-            return {"status": "error", "message": "No products gathered yet to build a solution"}
-            
-        history_text = "\n".join([
-            f"{'Πελάτης' if m.get('role') == 'user' else 'Ειδικός'}: {m.get('content')}"
-            for m in messages if m.get('content')
-        ])
+        if len(messages) < 2:
+            return {"status": "error", "message": "Insufficient interview data to build a solution"}
         
-        from expert_v3.solution_builder import generate_expert_solution
-        result = generate_expert_solution(history_text, accumulated)
+        # Run the full V4 pipeline (Stages 2→3→4)
+        from expert_v4.orchestrator import run_pipeline
+        result = run_pipeline(
+            messages=messages,
+            doc_ref=session_ref,
+        )
         
         now = datetime.now(timezone.utc)
         
@@ -178,10 +177,11 @@ def generate_expert_solution_v3(req: https_fn.CallableRequest) -> dict:
                 "messages": firestore.firestore.ArrayUnion([{
                     "id": str(uuid.uuid4()),
                     "role": "assistant",
-                    "content": "Εξαιρετικά! Έχω συλλέξει όλες τις απαραίτητες πληροφορίες και σας ετοίμασα το πλήρες εξατομικευμένο πλάνο!",
+                    "content": "Εξαιρετικά! Ο Ειδικός αξιολόγησε όλα τα διαθέσιμα προϊόντα και σας ετοίμασε το πλήρες εξατομικευμένο πλάνο!",
                     "solution": result.get("solution"),
                     "timestamp": now
                 }]),
+                "pipelineStage": "complete",
                 "status": "idle",
                 "agentStatus": ""
             })
@@ -193,6 +193,7 @@ def generate_expert_solution_v3(req: https_fn.CallableRequest) -> dict:
                     "content": result.get("answer", "Συγγνώμη, παρουσιάστηκε σφάλμα κατά την επεξεργασία του πλάνου."),
                     "timestamp": now
                 }]),
+                "pipelineStage": "error",
                 "status": "idle",
                 "agentStatus": ""
             })
@@ -200,66 +201,75 @@ def generate_expert_solution_v3(req: https_fn.CallableRequest) -> dict:
         return result
 
     except Exception as e:
-        print(f"Error in generate_expert_solution_v3 wrapper: {e}")
+        print(f"Error in generate_expert_solution_v4 wrapper: {e}")
+        try:
+            if 'session_ref' in locals() and session_ref is not None:
+                from firebase_admin import firestore
+                import uuid
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                session_ref.update({
+                    "messages": firestore.firestore.ArrayUnion([{
+                        "id": str(uuid.uuid4()),
+                        "role": "assistant",
+                        "content": f"Συγγνώμη, παρουσιάστηκε ένα τεχνικό σφάλμα. Παρακαλώ δοκιμάστε ξανά.",
+                        "timestamp": now
+                    }]),
+                    "pipelineStage": "error",
+                    "status": "idle",
+                    "agentStatus": ""
+                })
+        except Exception as inner_e:
+            print(f"Failed to reset session state: {inner_e}")
+            
         return {"status": "error", "message": str(e)}
 
-# --- 7d. Expert Paint Advisor V3 (ReAct Agent - Firestore Driven) ---
+# --- 7d. Expert Paint Advisor V4 (Interviewer - Firestore Driven) ---
 @firestore_fn.on_document_written(
     document="users/{userId}/expert_sessions/{sessionId}",
     region="europe-west1",
     memory=options.MemoryOption.MB_512,
-    timeout_sec=540 # Allow up to 9 minutes for long tool queries
+    timeout_sec=300
 )
 def expert_session_trigger(event: firestore_fn.Event[firestore_fn.Change[firestore_fn.DocumentSnapshot]]) -> None:
+    """V4: Uses the pure Interviewer agent (no product tools)."""
     try:
-        # We only care about after-writes where the document still exists
         if not event.data or not event.data.after or not event.data.after.exists:
             return
 
         after_data = event.data.after.to_dict() or {}
-        
-        # ── CRITICAL SELF-TRIGGER GUARD ──────────────────────────────────────
-        # The trigger fires on EVERY write to this document — including writes
-        # the function itself makes (agentStatus updates, etc). We ONLY want to
-        # run the agent when a NEW MESSAGE was added by the user (i.e., the
-        # messages array grew). Compare before vs after to detect this.
         before_data = event.data.before.to_dict() if (event.data.before and event.data.before.exists) else {}
         
         before_messages = before_data.get("messages", [])
         after_messages = after_data.get("messages", [])
         
-        # If message count didn't increase, this was an internal write — skip.
         if len(after_messages) <= len(before_messages):
             return
 
         last_message = after_messages[-1]
-
-        # Only process if the newly added message is from the user
         if last_message.get("role") != "user":
             return
 
         user_id = event.params.get("userId", "unknown")
         session_id = event.params.get("sessionId", "unknown")
         main_logger.info(
-            "[expert_session_trigger] New user message detected",
+            "[expert_session_trigger_v4] New user message detected",
             user_id=user_id,
             session_id=session_id,
         )
 
-        # 1. Update status to processing immediately
         event.data.after.reference.update({
             "status": "processing",
             "agentStatus": "Ανάλυση ερωτήματος..."
         })
         
-        from expert_v3.agent import ExpertV3Agent
-        agent = ExpertV3Agent()
+        # V4: Use the Interviewer (pure chat, no product tools)
+        from expert_v4.interviewer import InterviewerAgent
+        agent = InterviewerAgent()
         
-        # Build history from all messages EXCEPT the latest user one
         history = []
         for msg in after_messages[:-1]:
             h = {"role": msg.get("role", "user"), "content": msg.get("content", "")}
-            # Carry through image_url for multimodal history
             if msg.get("image_url"):
                 h["image_url"] = msg["image_url"]
             history.append(h)
@@ -267,31 +277,26 @@ def expert_session_trigger(event: firestore_fn.Event[firestore_fn.Change[firesto
         user_message_content = last_message.get("content", "")
         user_image_url = last_message.get("image_url")
         
-        # 2. Process chat — pass session_id + user_id for structured log correlation
         result = agent.process_chat(
             user_message_content,
             history=history,
             doc_ref=event.data.after.reference,
             session_id=session_id,
             user_id=user_id,
-            session_data=after_data,
             image_url=user_image_url,
         )
         
         from firebase_admin import firestore
         import uuid
-        
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
 
-        # 3. Append final result and reset status
         if result.get("status") == "chat":
             event.data.after.reference.update({
                 "messages": firestore.firestore.ArrayUnion([{
                     "id": str(uuid.uuid4()),
                     "role": "assistant",
                     "content": result.get("answer", ""),
-                    "ready_for_solution": result.get("ready_for_solution", False),
                     "timestamp": now
                 }]),
                 "status": "idle",
@@ -305,14 +310,13 @@ def expert_session_trigger(event: firestore_fn.Event[firestore_fn.Change[firesto
                     "content": result.get("answer", "Συγγνώμη, παρουσιάστηκε σφάλμα κατά την επεξεργασία."),
                     "timestamp": now
                 }]),
-
                 "status": "error",
                 "agentStatus": ""
             })
 
     except Exception as e:
         main_logger.error(
-            f"expert_session_trigger CRASHED: {e}",
+            f"expert_session_trigger_v4 CRASHED: {e}",
             exc_info=True,
             session_id=event.params.get("sessionId", "unknown"),
             user_id=event.params.get("userId", "unknown"),
@@ -325,7 +329,7 @@ def expert_session_trigger(event: firestore_fn.Event[firestore_fn.Change[firesto
         except:
             pass
 
-# --- 7e. Context Analysis Trigger (Parallel Sidebar Agent) ---
+# --- 7e. Context Analysis Trigger V4 (Interview Completeness) ---
 @firestore_fn.on_document_written(
     document="users/{userId}/expert_sessions/{sessionId}",
     region="europe-west1",
@@ -333,11 +337,7 @@ def expert_session_trigger(event: firestore_fn.Event[firestore_fn.Change[firesto
     timeout_sec=120
 )
 def context_analysis_trigger(event: firestore_fn.Event[firestore_fn.Change[firestore_fn.DocumentSnapshot]]) -> None:
-    """
-    Fires after the chat agent writes an assistant message.
-    Produces structured sidebar data (analysis phase, products, logs)
-    and writes it back to the session document's sidebarState field.
-    """
+    """V4: Tracks interview completeness, not product accumulation."""
     try:
         if not event.data or not event.data.after or not event.data.after.exists:
             return
@@ -348,32 +348,29 @@ def context_analysis_trigger(event: firestore_fn.Event[firestore_fn.Change[fires
         before_messages = before_data.get("messages", [])
         after_messages = after_data.get("messages", [])
 
-        # Only fire when a new message was added
         if len(after_messages) <= len(before_messages):
             return
 
         last_message = after_messages[-1]
-
-        # INVERSE guard: only process ASSISTANT messages
         if last_message.get("role") != "assistant":
             return
 
         user_id = event.params.get("userId", "unknown")
         session_id = event.params.get("sessionId", "unknown")
         main_logger.info(
-            "[context_analysis_trigger] New assistant message — running sidebar analysis",
+            "[context_analysis_trigger_v4] Running sidebar analysis",
             user_id=user_id,
             session_id=session_id,
         )
 
-        accumulated = after_data.get("accumulatedProducts", {})
         has_solution = bool(last_message.get("solution"))
+        pipeline_stage = after_data.get("pipelineStage", "")
 
-        from expert_v3.context_analyzer import analyze_context
+        from expert_v4.context_analyzer import analyze_context
         sidebar_state = analyze_context(
             messages=after_messages,
-            accumulated_products=accumulated,
             has_solution=has_solution,
+            pipeline_stage=pipeline_stage,
         )
 
         event.data.after.reference.update({
@@ -381,14 +378,15 @@ def context_analysis_trigger(event: firestore_fn.Event[firestore_fn.Change[fires
         })
 
         main_logger.info(
-            "[context_analysis_trigger] Sidebar state written",
-            phase=sidebar_state.get("analysisPhase"),
+            "[context_analysis_trigger_v4] Sidebar state written",
+            phase=sidebar_state.get("overallPhase"),
+            readiness=sidebar_state.get("briefReadiness"),
             session_id=session_id,
         )
 
     except Exception as e:
         main_logger.error(
-            f"context_analysis_trigger CRASHED: {e}",
+            f"context_analysis_trigger_v4 CRASHED: {e}",
             exc_info=True,
             session_id=event.params.get("sessionId", "unknown"),
         )
@@ -548,7 +546,9 @@ def pylon_sync_products(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response("Method Not Allowed", status=405, headers=headers)
     
     try:
-        result = asyncio.run(sync_products_job())
+        data = req.get_json(silent=True) or {}
+        skus = data.get("skus")
+        result = asyncio.run(sync_products_job(skus=skus))
         headers['Content-Type'] = 'application/json'
         return https_fn.Response(json.dumps({"status": "ok", "result": result}), status=200, headers=headers)
     except Exception as e:
@@ -809,11 +809,13 @@ def debug_env_http(req: https_fn.Request) -> https_fn.Response:
     schedule="every 1 minutes",
     region="europe-west1",
     memory=options.MemoryOption.GB_1,
+    timeout_sec=540,
 )
 def cron_check_batches(event: scheduler_fn.ScheduledEvent) -> None:
     """
     Checks Vertex AI batch job status and writes per-product results
     to Firestore, enabling real-time UI updates via onSnapshot.
+    Also acts as the master queue driver for parallel Studio processing.
     """
     from ai.batch_processor import check_and_process_batches
     try:

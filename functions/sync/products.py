@@ -58,7 +58,7 @@ def _build_product_images(ai: dict) -> list:
     return result
 
 
-def _build_metafields(ai: dict) -> list:
+def _build_metafields(ai: dict, project_category: str = "") -> list:
     """
     Builds the metafields array for inline inclusion in Shopify product creation.
     Maps AI enrichment data to structured metafields under the 'pavlicevits' namespace.
@@ -90,7 +90,7 @@ def _build_metafields(ai: dict) -> list:
     # --- Base product metafields ---
     _add("short_description", ai.get("short_description"), "multi_line_text_field")
     _add("brand", ai.get("brand"))
-    _add("category", ai.get("category"))
+    _add("category", project_category)
     _add("ai_confidence", ai.get("confidence_score"), "number_decimal")
 
     # --- Technical specs metafields (paint products) ---
@@ -232,7 +232,7 @@ def _recover_stuck_publishing(db):
         logger.error(f"Error recovering stuck PUBLISHING products: {e}")
 
 
-async def sync_products_job():
+async def sync_products_job(skus: list = None):
     """
     Syncs 'READY_FOR_PUBLISH' products from Firestore Staging to Shopify.
     
@@ -267,13 +267,26 @@ async def sync_products_job():
         logger.warning(f"Non-critical: Failed to bootstrap metafield definitions: {mf_err}")
 
     # --- Phase 1: Fetch READY_FOR_PUBLISH products ---
-    docs = db.collection("staging_products").where("status", "==", "READY_FOR_PUBLISH").stream()
-
-    products_to_sync = []
-    for doc in docs:
-        product_data = doc.to_dict()
-        product_data["sku"] = doc.id
-        products_to_sync.append(product_data)
+    if skus is not None:
+        logger.info(f"Syncing specific SKUs: {skus}")
+        products_to_sync = []
+        for sku in skus:
+            doc_ref = db.collection("staging_products").document(sku)
+            doc_snap = doc_ref.get()
+            if doc_snap.exists:
+                data = doc_snap.to_dict()
+                if data.get("status") == "READY_FOR_PUBLISH":
+                    data["sku"] = sku
+                    products_to_sync.append(data)
+                else:
+                    logger.warning(f"SKU {sku} is not READY_FOR_PUBLISH, skipping.")
+    else:
+        docs = db.collection("staging_products").where("status", "==", "READY_FOR_PUBLISH").stream()
+        products_to_sync = []
+        for doc in docs:
+            product_data = doc.to_dict()
+            product_data["sku"] = doc.id
+            products_to_sync.append(product_data)
 
     if not products_to_sync:
         logger.info("No products ready for publish.")
@@ -295,9 +308,18 @@ async def sync_products_job():
         existing_shopify_id = p.get("shopify_product_id")
         if not existing_shopify_id:
             # Check Shopify directly by SKU (covers partial runs / manual imports)
-            existing_shopify_id = shopify.find_product_id_by_sku(sku)
-            if existing_shopify_id:
-                logger.info(f"Product {sku} found in Shopify (ID: {existing_shopify_id}). Will UPDATE.")
+            # Gather all possible SKUs (base + variants with suffixes)
+            skus_to_check = [sku]
+            ai_variants = ai.get("variants", [])
+            for v in ai_variants:
+                if v.get("sku_suffix"):
+                    skus_to_check.append(f"{sku}{v['sku_suffix']}")
+            
+            for check_sku in skus_to_check:
+                existing_shopify_id = shopify.find_product_id_by_sku(check_sku)
+                if existing_shopify_id:
+                    logger.info(f"Product found in Shopify via SKU {check_sku} (ID: {existing_shopify_id}). Will UPDATE.")
+                    break
 
         is_update = bool(existing_shopify_id)
 
@@ -331,22 +353,45 @@ async def sync_products_job():
             # Images (base first)
             images = _build_product_images(ai)
 
-            # Tags (include category as a tag)
+            # Backward compatibility logic for resolving category and type
+            valid_project_categories = ["Αυτοκίνητο", "Ναυτιλιακά", "Οικοδομικά", "Ειδικές Εφαρμογές"]
+            legacy_category = ai.get("category")
+            legacy_type = ai.get("type")
+
+            # Resolve Project Category (metafield + collection)
+            project_category = ai.get("project_category")
+            if not project_category and legacy_category in valid_project_categories:
+                project_category = legacy_category
+            elif not project_category:
+                project_category = ""
+
+            # Resolve Product Type (Shopify product_type)
+            product_type = ai.get("product_type")
+            if not product_type and legacy_type:
+                product_type = legacy_type
+            elif not product_type and legacy_category and legacy_category not in valid_project_categories:
+                # Catch the UI bug where product type was saved as category
+                product_type = legacy_category
+            if not product_type:
+                product_type = "General"
+
+            # Tags (include project_category and product_type as tags)
             tags_list = ai.get("tags", [])
             if isinstance(tags_list, str):
                 tags_str = tags_list
             else:
                 tags_str = ", ".join(tags_list)
-            category = ai.get("category", "")
-            if category and category not in tags_list:
-                tags_str = f"{tags_str}, {category}" if tags_str else category
+            
+            if project_category and project_category not in tags_list:
+                tags_str = f"{tags_str}, {project_category}" if tags_str else project_category
+            if product_type != "General" and product_type not in tags_list:
+                tags_str = f"{tags_str}, {product_type}" if tags_str else product_type
 
             # Rich HTML body
             body_html = _build_body_html(ai)
 
-            # Vendor & Product Type
+            # Vendor
             vendor = ai.get("brand") or pylon.get("brand", "Pavlicevits")
-            product_type = category or "General"
 
             # --- Build Options & Variants ---
             options = []
@@ -419,7 +464,7 @@ async def sync_products_job():
                 product_payload["options"] = options
 
             # Metafields (inline — no extra API calls)
-            metafields = _build_metafields(ai)
+            metafields = _build_metafields(ai, project_category=project_category)
             if metafields:
                 product_payload["metafields"] = metafields
 
@@ -469,13 +514,13 @@ async def sync_products_job():
             # ============================================
             # PHASE 5: Assign to Collection
             # ============================================
-            if category:
+            if project_category:
                 try:
-                    collection_id = shopify.get_or_create_collection(category)
+                    collection_id = shopify.get_or_create_collection(project_category)
                     if collection_id:
                         shopify.add_product_to_collection(product_id, collection_id)
                     else:
-                        warnings.append(f"collection '{category}' could not be found/created")
+                        warnings.append(f"collection '{project_category}' could not be found/created")
                 except Exception as coll_err:
                     logger.warning(f"Non-critical: Failed to assign {sku} to collection: {coll_err}")
                     warnings.append(f"collection assignment failed: {str(coll_err)[:80]}")

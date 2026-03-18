@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { KnowledgeState, ExpertChatResponse } from './types';
+import { KnowledgeState, ExpertChatResponse, SidebarState } from './types';
 import { getFirebaseDb, getFirebaseAuth, getFirebaseFunctions } from '../firebase/config';
 import { doc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { removeUndefined } from '../utils';
@@ -31,31 +31,8 @@ export interface ChatMessage {
     safety_warnings?: string[];
 }
 
-// Sidebar state produced by context_analysis_trigger
-export interface SidebarRecommendedProduct {
-    handle: string;
-    variant_id: string;
-    title: string;
-    sequence_step: string;
-    reason: string;
-}
-
-export interface SidebarKnowledgeDimension {
-    id: string;
-    label: string;
-    status: 'identified' | 'pending' | 'unknown';
-    value: string | null;
-}
-
-export interface SidebarState {
-    overallPhase: 'initialization' | 'gathering_info' | 'product_matching' | 'solution_ready' | 'complete';
-    overallPhaseLabel: string;
-    domain: string;
-    showSolutionButton: boolean;
-    knowledgeDimensions: SidebarKnowledgeDimension[];
-    recommendedProducts: SidebarRecommendedProduct[];
-    logs: Array<{ type: string; message: string }>;
-}
+// V4: Sidebar types re-exported from types.ts
+export type { SidebarState, KnowledgeDimension as SidebarKnowledgeDimension, SuggestedProduct as SidebarRecommendedProduct } from './types';
 
 interface ExpertSystemState {
     sessionId: string;
@@ -64,7 +41,7 @@ interface ExpertSystemState {
     isSyncing: boolean;
     agentStatus: string;
     solution: ExpertChatResponse['solution'] | null;
-    accumulatedProducts: Record<string, any>;
+    pipelineStage: '' | 'planning' | 'retrieving' | 'synthesizing' | 'complete' | 'error';
     sidebarState: SidebarState | null;
     _unsubscribeSnapshot?: Unsubscribe;
 
@@ -92,7 +69,7 @@ export const useExpertStore = create<ExpertSystemState>()(
             isSyncing: false,
             agentStatus: "",
             solution: null,
-            accumulatedProducts: {},
+            pipelineStage: '',
             sidebarState: null,
             addMessage: (msgInput) => {
                 set((state) => ({
@@ -149,7 +126,7 @@ export const useExpertStore = create<ExpertSystemState>()(
                     isTyping: false,
                     agentStatus: "",
                     solution: null,
-                    accumulatedProducts: {},
+                    pipelineStage: '',
                     sidebarState: null,
                     _unsubscribeSnapshot: undefined
                 });
@@ -193,7 +170,7 @@ export const useExpertStore = create<ExpertSystemState>()(
 
                 try {
                     const functions = getFirebaseFunctions();
-                    const generateFn = httpsCallable(functions, 'generate_expert_solution_v3');
+                    const generateFn = httpsCallable(functions, 'generate_expert_solution_v4');
                     await generateFn({ sessionId: state.sessionId, userId: user.uid });
                 } catch (error) {
                     console.error("Failed to generate solution:", error);
@@ -260,18 +237,18 @@ export const useExpertStore = create<ExpertSystemState>()(
                                 // Simple merge: if firestore has more messages, update local state
                                 if (data.messages.length > currentMessages.length) {
                                     set({ messages: data.messages });
+                                }
 
-                                    // 3. Auto-populate solution if it arrived in the last assistant message
-                                    const latestMsg = data.messages[data.messages.length - 1];
-                                    if (latestMsg.role === 'assistant' && latestMsg.solution) {
-                                        set({ solution: latestMsg.solution });
-                                    }
+                                // 3. Auto-populate solution if it arrived in the last assistant message
+                                const latestMsg = data.messages[data.messages.length - 1];
+                                if (latestMsg && latestMsg.role === 'assistant' && latestMsg.solution) {
+                                    set({ solution: latestMsg.solution });
                                 }
                             }
 
-                            // 4. Sync accumulated products (written by agent tool calls)
-                            if (data.accumulatedProducts && typeof data.accumulatedProducts === 'object') {
-                                set({ accumulatedProducts: data.accumulatedProducts });
+                            // 4. Sync pipeline stage
+                            if (data.pipelineStage) {
+                                set({ pipelineStage: data.pipelineStage });
                             }
 
                             // 5. Sync sidebar state (written by context_analysis_trigger)
@@ -291,7 +268,9 @@ export const useExpertStore = create<ExpertSystemState>()(
             partialize: (state) => ({
                 sessionId: state.sessionId,
                 messages: state.messages,
-                accumulatedProducts: state.accumulatedProducts,
+                pipelineStage: state.pipelineStage,
+                solution: state.solution,
+                sidebarState: state.sidebarState,
             }), // Only persist these
         }
     )

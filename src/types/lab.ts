@@ -4,6 +4,8 @@
  */
 export enum ProductState {
     IMPORTED = "IMPORTED",
+    IGNORED = "IGNORED",
+    NEEDS_MANUAL_DATA = "NEEDS_MANUAL_DATA",
     BATCH_GENERATING = "BATCH_GENERATING",
     RAW_INGESTED = "RAW_INGESTED",
     GENERATING_METADATA = "GENERATING_METADATA",
@@ -83,20 +85,30 @@ export interface ProductImage {
     description?: string;
 }
 
+export interface SearchSuggestion {
+    term: string;
+    confidence: number;
+}
+
 export interface ProductEnrichmentData {
     title: string;
     brand?: string;
     description: string;
     short_description: string;
     tags: string[];
-    type: ProductType | string;
-    category: ProjectCategory | string;
+    type?: ProductType | string;
+    category?: ProjectCategory | string;
+    product_type?: ProductType | string;
+    project_category?: ProjectCategory | string;
     variants: ProductVariant[];
     attributes: Record<string, any>;
     technical_specs?: PaintTechnicalSpecs;
     confidence_score: number;
+    searchability_score?: number;
+    search_suggestions?: SearchSuggestion[];
     flagged_fields?: string[];
     qa_reasoning?: string;
+    qa_suggestions?: Record<string, any>;
 
     // UI Trackers / Additional fields
     images?: ProductImage[]; // Finalized Output
@@ -114,6 +126,7 @@ export interface LabProduct {
     sku: string;
     status: ProductState;
     enrichment_message?: string;
+    search_query?: string;
 
     // The sparse data from Pylon
     pylon_data: {

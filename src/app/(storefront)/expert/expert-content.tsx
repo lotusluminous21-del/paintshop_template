@@ -1,19 +1,17 @@
 'use client';
 
 /**
- * ExpertContent — AI Expert Assistant Screen
- * Rebuilt with Meta AI-inspired animated chat UI.
- * Backend: Zustand store + Firestore (unchanged).
- * Sidebar: preserved (progress, dimensions, recommended products).
+ * ExpertContent — AI Expert Assistant Screen (V4)
+ * 4-stage pipeline: Interviewer → Query Planner → Retriever → Expert Synthesizer
+ * Sidebar shows interview progress + pipeline status.
  */
 
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
-import { useExpertStore, type SidebarState } from '@/lib/expert/store';
-import { useProductDetails } from '@/lib/expert/use-product-details';
-import { ProjectProgress, type ProgressStep } from '@/components/industrial_ui/ProjectProgress';
-import { ProductLightbox } from '@/components/industrial_ui/ProductLightbox';
+import { useExpertStore } from '@/lib/expert/store';
+import type { SidebarState, InterviewProgress } from '@/lib/expert/types';
+
 import {
     Sheet,
     SheetContent,
@@ -21,8 +19,8 @@ import {
     SheetDescription,
 } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import Image from 'next/image';
-import { Package, Loader2 } from 'lucide-react';
+import { Loader2, Sparkles, CheckCircle2, Circle, Clock } from 'lucide-react';
+import Link from 'next/link';
 
 // New chat components
 import { ChatHeader } from '@/components/expert_chat/ChatHeader';
@@ -30,153 +28,192 @@ import { ChatComposer } from '@/components/expert_chat/ChatComposer';
 import { ChatMessageBubble, seedRevealedMessages } from '@/components/expert_chat/ChatMessage';
 import { WelcomeScreen } from '@/components/expert_chat/WelcomeScreen';
 
-// ─── Progress derivation (unchanged) ──────────────────────────────
-
-const VISUAL_PHASE_ORDER: Array<SidebarState['overallPhase']> = [
-    'initialization',
-    'gathering_info',
-    'product_matching',
-    'complete',
-];
+// ─── V4 Constants ──────────────────────────────────────────
 
 const OVERALL_PHASE_LABELS: Record<string, string> = {
-    initialization: 'Αρχικοποίηση',
-    gathering_info: 'Συλλογή Πληροφοριών',
-    product_matching: 'Αντιστοίχιση Προϊόντων',
-    solution_ready: 'Ολοκλήρωση',
+    interviewing: 'Συνέντευξη',
+    ready_for_plan: 'Έτοιμο για Πλάνο',
+    planning: 'Δημιουργία Πλάνου',
+    retrieving: 'Αναζήτηση Προϊόντων',
+    synthesizing: 'Ανάλυση Ειδικού',
     complete: 'Ολοκλήρωση',
 };
 
-function deriveProgressFromSidebar(
-    sidebarState: SidebarState | null,
-    isTyping: boolean,
-    solution: any,
-): { steps: ProgressStep[]; progress: number } {
-    const currentPhase = sidebarState?.overallPhase || 'initialization';
-    const visualPhase = currentPhase === 'solution_ready' ? 'complete' : currentPhase;
-    const currentIdx = VISUAL_PHASE_ORDER.indexOf(visualPhase as SidebarState['overallPhase']);
-
-    const steps: ProgressStep[] = VISUAL_PHASE_ORDER.map((phase, idx) => {
-        const label = sidebarState?.overallPhaseLabel && phase === visualPhase
-            ? sidebarState.overallPhaseLabel
-            : OVERALL_PHASE_LABELS[phase];
-
-        let status: ProgressStep['status'];
-        if (idx < currentIdx) status = 'completed';
-        else if (idx === currentIdx) status = isTyping ? 'current' : (solution ? 'completed' : 'current');
-        else status = 'pending';
-
-        return { id: String(idx + 1), label, status };
-    });
-
-    const completed = steps.filter(s => s.status === 'completed').length;
-    const progress = Math.round((completed / steps.length) * 100);
-
-    return { steps, progress };
-}
-
+const INTERVIEW_DIMENSION_LABELS: Record<keyof InterviewProgress, string> = {
+    what: 'Τι βάφουμε',
+    why: 'Γιατί / Κατάσταση',
+    how: 'Μέθοδος Εφαρμογής',
+    where: 'Περιβάλλον',
+    result: 'Επιθυμητό Αποτέλεσμα',
+};
 // ─── Sidebar ──────────────────────────────────────────
 
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SidebarProps {
-    steps: ProgressStep[];
-    progress: number;
     sidebarState: SidebarState | null;
+    isGenerating?: boolean;
+    pipelineStage?: string;
 }
 
-function SidebarContent({ steps, progress, sidebarState }: SidebarProps) {
-    const [lightboxHandle, setLightboxHandle] = useState<string | null>(null);
-
-    const uniqueProducts = useMemo(() => {
-        if (!sidebarState?.recommendedProducts) return [];
-        const seen = new Set<string>();
-        return sidebarState.recommendedProducts.filter(p => {
-            const key = p.handle;
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        });
-    }, [sidebarState?.recommendedProducts]);
-
-    const productHandles = useMemo(() => uniqueProducts.map(p => p.handle), [uniqueProducts]);
-    const { products, loading } = useProductDetails(productHandles);
-
-    const lightboxProduct = lightboxHandle ? products.get(lightboxHandle) ?? null : null;
-    const lightboxMeta = sidebarState?.recommendedProducts?.find(p => p.handle === lightboxHandle);
-
+function SidebarContent({ sidebarState, isGenerating, pipelineStage }: SidebarProps) {
+    const interviewProgress = sidebarState?.interviewProgress;
+    const briefReadiness = sidebarState?.briefReadiness ?? 0;
     const dimensions = sidebarState?.knowledgeDimensions || [];
     const hasDimensions = dimensions.length > 0;
+    const logs = sidebarState?.logs || [];
+    const currentPhase = sidebarState?.overallPhase || 'interviewing';
+    const phaseLabel = sidebarState?.overallPhaseLabel || OVERALL_PHASE_LABELS[currentPhase] || 'Συνέντευξη';
+
+    // Pipeline stage labels for the generating state
+    const PIPELINE_STAGE_LABELS: Record<string, string> = {
+        planning: 'Δημιουργία πλάνου αναζήτησης...',
+        retrieving: 'Αναζήτηση κατάλληλων προϊόντων...',
+        synthesizing: 'Ο Ειδικός αξιολογεί συμβατότητα...',
+    };
 
     return (
-        <div className="flex flex-col gap-10 h-full pb-10">
-            {/* 1. Progress Section */}
+        <div className="flex flex-col gap-8 h-full pb-10">
+            {/* 1. Phase Header — Compact current stage + readiness */}
             <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+                className="flex flex-col gap-3"
             >
-                <ProjectProgress
-                    title="ΠΡΟΟΔΟΣ ΑΝΑΛΥΣΗΣ"
-                    progress={progress}
-                    steps={steps}
-                />
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        {isGenerating ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
+                        ) : currentPhase === 'complete' ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-accent" />
+                        ) : (
+                            <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                        )}
+                        <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground">
+                            {isGenerating ? (PIPELINE_STAGE_LABELS[pipelineStage || ''] || 'Επεξεργασία...') : phaseLabel}
+                        </span>
+                    </div>
+                    {sidebarState?.domain && (
+                        <span className="text-[9px] font-black tracking-tighter text-accent bg-accent/5 px-2 py-0.5 rounded border border-accent/10">
+                            {sidebarState.domain.toUpperCase()}
+                        </span>
+                    )}
+                </div>
+
+                {/* Readiness bar — always visible during interview */}
+                {currentPhase !== 'complete' && (
+                    <div className="flex items-center gap-3">
+                        <div className="flex-1 h-1 rounded-full bg-secondary/60 overflow-hidden">
+                            <motion.div
+                                className="h-full rounded-full bg-accent"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(isGenerating ? 100 : briefReadiness * 100)}%` }}
+                                transition={{ duration: 0.6, ease: 'easeOut' }}
+                            />
+                        </div>
+                        <span className="text-[10px] font-black text-accent tabular-nums w-8 text-right">
+                            {isGenerating ? '⚡' : `${Math.round(briefReadiness * 100)}%`}
+                        </span>
+                    </div>
+                )}
             </motion.div>
 
-            {/* 2. Dimensions Section - Redesigned for No-Crop */}
-            {hasDimensions && (
-                <motion.div 
+            {/* 2. Interview Dimensions — 5 quality axes */}
+            {interviewProgress && !isGenerating && (
+                <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="flex flex-col gap-4"
+                    className="flex flex-col gap-3"
                 >
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/70">
-                            ΑΝΑΛΥΣΗ ΕΡΓΟΥ
-                        </h3>
-                        {sidebarState?.domain && (
-                            <span className="text-[9px] font-black tracking-tighter text-accent bg-accent/5 px-2 py-0.5 rounded border border-accent/10">
-                                {sidebarState.domain.toUpperCase()}
-                            </span>
-                        )}
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/70">
+                        ΠΛΗΡΟΤΗΤΑ ΣΥΝΕΝΤΕΥΞΗΣ
+                    </h3>
+                    <div className="space-y-2.5">
+                        <AnimatePresence mode="popLayout">
+                            {(Object.keys(INTERVIEW_DIMENSION_LABELS) as Array<keyof InterviewProgress>).map((key) => {
+                                const dim = interviewProgress[key];
+                                if (!dim) return null;
+                                return (
+                                    <motion.div
+                                        key={key}
+                                        layout
+                                        initial={{ opacity: 0, x: -8 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, scale: 0.95 }}
+                                        className="flex items-start gap-2"
+                                    >
+                                        <div className="mt-0.5">
+                                            {dim.status === 'identified' ? (
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-accent" />
+                                            ) : dim.status === 'pending' ? (
+                                                <Clock className="w-3.5 h-3.5 text-primary animate-pulse" />
+                                            ) : (
+                                                <Circle className="w-3.5 h-3.5 text-muted-foreground/30" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <span className={cn(
+                                                "text-[12px] font-semibold tracking-tight",
+                                                dim.status === 'identified' ? 'text-foreground' : 'text-muted-foreground/70'
+                                            )}>
+                                                {INTERVIEW_DIMENSION_LABELS[key]}
+                                            </span>
+                                            {dim.value && dim.status === 'identified' && (
+                                                <motion.span
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    className="ml-2 inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-accent/8 text-accent border border-accent/15 leading-none"
+                                                >
+                                                    {dim.value}
+                                                </motion.span>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </AnimatePresence>
                     </div>
+                </motion.div>
+            )}
 
-                    <div className="space-y-4">
+            {/* 3. Detailed Knowledge Dimensions (extras beyond the 5 core) */}
+            {hasDimensions && !isGenerating && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col gap-3"
+                >
+                    <div className="h-px bg-gradient-to-r from-border/40 via-border/20 to-transparent" />
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/70">
+                        ΤΕΧΝΙΚΑ ΣΤΟΙΧΕΙΑ
+                    </h3>
+                    <div className="space-y-2">
                         <AnimatePresence mode="popLayout">
                             {dimensions.map((dim) => (
-                                <motion.div 
+                                <motion.div
                                     key={dim.id}
                                     layout
-                                    initial={{ opacity: 0, x: -10 }}
+                                    initial={{ opacity: 0, x: -8 }}
                                     animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
-                                    className="flex flex-col gap-1.5"
+                                    exit={{ opacity: 0 }}
+                                    className="flex items-center gap-2"
                                 >
-                                    <div className="flex items-center gap-2">
-                                        <div className={cn(
-                                            "w-1.5 h-1.5 rounded-full",
-                                            dim.status === 'identified' ? 'bg-accent shadow-[0_0_4px_rgba(var(--accent),0.5)]' :
-                                                dim.status === 'pending' ? 'bg-primary animate-pulse' :
-                                                    'bg-muted'
-                                        )} />
-                                        <span className={cn(
-                                            "text-[12px] font-semibold tracking-tight",
-                                            dim.status === 'identified' ? 'text-foreground' : 'text-muted-foreground'
-                                        )}>
-                                            {dim.label}
-                                        </span>
-                                    </div>
-                                    
+                                    <div className={cn(
+                                        "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                                        dim.status === 'identified' ? 'bg-accent' :
+                                            dim.status === 'pending' ? 'bg-primary/60 animate-pulse' : 'bg-muted/40'
+                                    )} />
+                                    <span className={cn(
+                                        "text-[11px] tracking-tight",
+                                        dim.status === 'identified' ? 'font-semibold text-foreground' : 'text-muted-foreground/60'
+                                    )}>
+                                        {dim.label}
+                                    </span>
                                     {dim.value && dim.status === 'identified' && (
-                                        <motion.div 
-                                            initial={{ opacity: 0, scale: 0.95 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            className="ml-3.5"
-                                        >
-                                            <span className="inline-block px-2.5 py-1 rounded-md text-[11px] font-bold bg-secondary/80 text-foreground border border-border/40 backdrop-blur-sm leading-none">
-                                                {dim.value}
-                                            </span>
-                                        </motion.div>
+                                        <span className="ml-auto text-[10px] font-bold text-accent/80 truncate max-w-[120px]">
+                                            {dim.value}
+                                        </span>
                                     )}
                                 </motion.div>
                             ))}
@@ -185,92 +222,60 @@ function SidebarContent({ steps, progress, sidebarState }: SidebarProps) {
                 </motion.div>
             )}
 
-            {/* 3. Recommended Products Section - Single Column List */}
-            <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="flex flex-col gap-4"
-            >
-                <div className="h-px bg-gradient-to-r from-border/50 via-border to-transparent" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/70 flex items-center gap-2">
-                    <Package className="w-3 h-3 opacity-70" />
-                    ΠΡΟΤΕΙΝΟΜΕΝΑ
-                    {loading && <Loader2 className="w-3 h-3 animate-spin text-accent ml-auto" />}
-                </h3>
+            {/* 4. Pipeline Status — shown when generating */}
+            {isGenerating && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col gap-4 p-4 rounded-xl bg-accent/5 border border-accent/15"
+                >
+                    <div className="space-y-3">
+                        {['planning', 'retrieving', 'synthesizing'].map((stage) => {
+                            const isActive = pipelineStage === stage;
+                            const isPast = ['planning', 'retrieving', 'synthesizing'].indexOf(pipelineStage || '') > ['planning', 'retrieving', 'synthesizing'].indexOf(stage);
+                            return (
+                                <div key={stage} className="flex items-center gap-2.5">
+                                    {isPast ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-accent" />
+                                    ) : isActive ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
+                                    ) : (
+                                        <Circle className="w-3.5 h-3.5 text-muted-foreground/30" />
+                                    )}
+                                    <span className={cn(
+                                        "text-[11px] font-semibold",
+                                        isPast ? 'text-accent' : isActive ? 'text-foreground' : 'text-muted-foreground/50'
+                                    )}>
+                                        {PIPELINE_STAGE_LABELS[stage]}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </motion.div>
+            )}
 
-                <div className="flex flex-col gap-3">
-                    <AnimatePresence mode="popLayout">
-                        {uniqueProducts.length > 0 ? (
-                            uniqueProducts.map((rec, idx) => {
-                                const shopifyProduct = products.get(rec.handle);
-                                const image = shopifyProduct?.featuredImage;
-                                const price = shopifyProduct?.priceRange?.minVariantPrice;
-
-                                return (
-                                    <motion.button
-                                        layout
-                                        key={rec.handle}
-                                        initial={{ opacity: 0, y: 20 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: idx * 0.1 }}
-                                        onClick={() => setLightboxHandle(rec.handle)}
-                                        className="flex items-center gap-3 p-2 rounded-xl bg-card border border-border/40 hover:border-accent/30 hover:shadow-sm transition-all text-left group cursor-pointer relative overflow-hidden"
-                                    >
-                                        <div className="relative w-16 h-16 flex-shrink-0 bg-secondary/30 rounded-lg overflow-hidden flex items-center justify-center p-1.5">
-                                            {image?.url ? (
-                                                <Image
-                                                    src={image.url}
-                                                    alt={image.altText || rec.title}
-                                                    fill
-                                                    className="object-contain p-1 group-hover:scale-110 transition-transform duration-500 ease-out"
-                                                    sizes="64px"
-                                                />
-                                            ) : (
-                                                <Package className="w-5 h-5 text-muted-foreground/30" />
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0 flex flex-col gap-1 pr-1">
-                                            <p className="text-[13px] font-bold text-foreground line-clamp-2 leading-[1.2] group-hover:text-accent transition-colors">
-                                                {rec.title}
-                                            </p>
-                                            <div className="flex items-center justify-between gap-2">
-                                                {rec.sequence_step && (
-                                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-accent/5 text-accent border border-accent/10 whitespace-nowrap">
-                                                        {rec.sequence_step}
-                                                    </span>
-                                                )}
-                                                {price && (
-                                                    <span className="text-[11px] font-bold text-muted-foreground tabular-nums ml-auto">
-                                                        {parseFloat(price.amount).toLocaleString('el-GR', { style: 'currency', currency: price.currencyCode || 'EUR' })}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </motion.button>
-                                );
-                            })
-                        ) : (
-                            <motion.div 
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className="h-28 rounded-xl border border-dashed border-border/60 flex flex-col items-center justify-center bg-secondary/10 gap-2"
-                            >
-                                <div className="w-1.5 h-1.5 rounded-full bg-accent/40 animate-ping" />
-                                <p className="text-[10px] text-muted-foreground/50 font-bold tracking-widest uppercase">Αναμονή ανάλυσης</p>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-            </motion.div>
-
-            <ProductLightbox
-                product={lightboxProduct}
-                open={!!lightboxHandle}
-                onOpenChange={(open) => !open && setLightboxHandle(null)}
-                sequenceStep={lightboxMeta?.sequence_step}
-                reason={lightboxMeta?.reason}
-            />
+            {/* 5. AI Log Strip */}
+            {logs.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col gap-2 mt-auto"
+                >
+                    <div className="h-px bg-gradient-to-r from-border/40 via-border/20 to-transparent" />
+                    <h3 className="text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/50 flex items-center gap-1.5">
+                        <span className="w-1 h-1 rounded-full bg-accent/40" />
+                        LOGS
+                    </h3>
+                    <div className="space-y-1">
+                        {logs.slice(-4).map((log, i) => (
+                            <p key={i} className="text-[10px] text-muted-foreground/60 leading-tight font-mono">
+                                {log.message}
+                            </p>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
         </div>
     );
 }
@@ -288,8 +293,10 @@ export default function ExpertContent() {
         solution,
         isTyping,
         sidebarState,
+        pipelineStage,
         resetSession,
         sendMessage,
+        generateSolution,
         initSessionListener,
     } = useExpertStore();
 
@@ -339,15 +346,19 @@ export default function ExpertContent() {
 
         // If user just sent a message, ALWAYS scroll to bottom
         // Otherwise, only scroll if we were already at the bottom
-        if (isUserLast || isAtBottom) {
-            container.scrollTo({
-                top: container.scrollHeight,
-                behavior: 'smooth',
-            });
+        if (isUserLast || isAtBottom || isTyping) {
+            setTimeout(() => {
+                container.scrollTo({
+                    top: container.scrollHeight,
+                    behavior: 'smooth',
+                });
+            }, 50);
         }
-    }, [messages, isAtBottom]);
+    }, [messages, isAtBottom, isTyping]);
 
-    const { steps: progressSteps, progress } = deriveProgressFromSidebar(sidebarState, isTyping, solution);
+    const isGenerating = pipelineStage === 'planning' || pipelineStage === 'retrieving' || pipelineStage === 'synthesizing';
+    const showSolutionCTA = !!(sidebarState?.showSolutionButton) && !isGenerating && !solution;
+    const showViewSolutionCTA = !!solution && !isGenerating;
 
     const handleSend = useCallback(
         (text: string) => {
@@ -363,7 +374,11 @@ export default function ExpertContent() {
             {/* Desktop Sidebar */}
             <aside data-lenis-prevent="true" className="hidden md:flex w-[340px] flex-shrink-0 border-r border-border flex-col overflow-hidden">
                 <ScrollArea className="flex-1 p-5">
-                    <SidebarContent steps={progressSteps} progress={progress} sidebarState={sidebarState} />
+                    <SidebarContent
+                        sidebarState={sidebarState}
+                        isGenerating={isGenerating}
+                        pipelineStage={pipelineStage}
+                    />
                 </ScrollArea>
             </aside>
 
@@ -375,7 +390,11 @@ export default function ExpertContent() {
                         Δείτε την πρόοδο του έργου, τα τεχνικά ημερολόγια και τις προτεινόμενες επικαλύψεις.
                     </SheetDescription>
                     <ScrollArea className="flex-1 p-5">
-                        <SidebarContent steps={progressSteps} progress={progress} sidebarState={sidebarState} />
+                        <SidebarContent
+                            sidebarState={sidebarState}
+                            isGenerating={isGenerating}
+                            pipelineStage={pipelineStage}
+                        />
                     </ScrollArea>
                 </SheetContent>
             </Sheet>
@@ -433,6 +452,63 @@ export default function ExpertContent() {
                                             </div>
                                         </div>
                                     </div>
+                                )}
+
+                                {/* In-chat Generate Solution CTA */}
+                                {showSolutionCTA && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 16 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.5, ease: 'easeOut' }}
+                                        className="flex justify-center py-2"
+                                    >
+                                        <button
+                                            onClick={generateSolution}
+                                            className="group relative flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-accent text-accent-foreground font-bold text-sm shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.03] active:scale-[0.97] overflow-hidden"
+                                        >
+                                            <div className="absolute inset-0 bg-gradient-to-r from-accent via-accent-light to-accent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                            <Sparkles className="w-4.5 h-4.5 relative z-10" />
+                                            <span className="relative z-10">Δημιουργία Εξατομικευμένου Πλάνου</span>
+                                        </button>
+                                    </motion.div>
+                                )}
+
+                                {/* In-chat View Solution CTA */}
+                                {showViewSolutionCTA && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 16 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.5, ease: 'easeOut' }}
+                                        className="flex justify-center py-2"
+                                    >
+                                        <Link
+                                            href="/solution"
+                                            className="group relative flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold text-sm shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.03] active:scale-[0.97] overflow-hidden"
+                                        >
+                                            <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary/80 to-primary opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                            <Sparkles className="w-4.5 h-4.5 relative z-10" />
+                                            <span className="relative z-10">Προβολή Εξατομικευμένου Πλάνου</span>
+                                        </Link>
+                                    </motion.div>
+                                )}
+
+                                {/* Pipeline generating indicator in chat */}
+                                {isGenerating && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 16 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="flex gap-2"
+                                    >
+                                        <div className="flex-shrink-0 w-6 h-6 md:w-7 md:h-7 rounded-full bg-accent flex items-center justify-center shadow-sm">
+                                            <Sparkles className="w-3 h-3 text-accent-foreground" />
+                                        </div>
+                                        <div className="rounded-2xl rounded-tl-sm px-4 py-3 bg-accent/5 border border-accent/20 flex items-center gap-2.5">
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
+                                            <span className="text-[13px] font-semibold text-foreground">
+                                                Ο Ειδικός αναλύει και ετοιμάζει το πλάνο σας...
+                                            </span>
+                                        </div>
+                                    </motion.div>
                                 )}
                             </div>
                             {/* Spacer to keep content above the floating composer */}

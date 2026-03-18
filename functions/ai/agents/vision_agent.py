@@ -319,7 +319,8 @@ Output valid JSON complying with the schema provided.
                 model_id = ModelName.IMAGE_RECONTEXT.value
                 endpoint = f"https://{region}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{region}/publishers/google/models/{model_id}:predict"
                 
-                imagen_retries = 3
+                # Fail-fast to the work_queue instead of sleeping inline
+                imagen_retries = 0
                 for attempt in range(imagen_retries + 1):
                     try:
                         creds, _ = default()
@@ -374,7 +375,7 @@ Output valid JSON complying with the schema provided.
                     ],
                     config=types.GenerateContentConfig(temperature=0.3, seed=random.randint(1, 1000000)),
                     sku=sku,
-                    max_retries=6
+                    max_retries=0 # Fail-fast to the work_queue
                 )
                 
                 if hasattr(response, 'generated_image') and response.generated_image:

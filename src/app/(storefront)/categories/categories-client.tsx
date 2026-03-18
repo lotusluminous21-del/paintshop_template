@@ -280,7 +280,7 @@ export function CategoriesClient({
         }
 
         return result
-    }, [products, activeType, selectedFinishes, selectedApplications, selectedEnvironments, selectedSurfaces, selectedBrands, selectedChemicalBases, maxPrice, sortValue])
+    }, [products, activeType, selectedFinishes, selectedApplications, selectedEnvironments, selectedSurfaces, selectedBrands, selectedChemicalBases, selectedProjectCategories, maxPrice, sortValue])
 
     // Active type label
     const categoryTitle = activeType === 'all' ? 'Όλα τα Προϊόντα' : activeType

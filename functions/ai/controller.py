@@ -97,8 +97,12 @@ class EnrichmentController:
         last_error = data.get("last_error_message", "")
         current_state = data.get("status", "")
         
+        # Detect if this is a known rate limit we should tolerate natively
+        is_rate_limit = "429" in str(error_message) or "RESOURCE_EXHAUSTED" in str(error_message) or "quota" in str(error_message).lower()
+        
         # If the exact same error happens consecutively, fail immediately to prevent pointless loops
-        if error_message == last_error:
+        # UNLESS it's a rate limit error, which we expect to repeat until quota resets
+        if error_message == last_error and not is_rate_limit:
             status = ProductState.FAILED.value
             enrich_msg = f"{error_message} (Identical consecutive error. Aborting.)"
         elif failed_attempts <= max_retries:
@@ -115,7 +119,8 @@ class EnrichmentController:
             "last_error_message": error_message
         }
         
-        # If we are scheduling a retry, remember where we failed so cron can revive us safely
+        # Always remember where we failed so we can cleanly resume later
+        update_payload["failed_at_state"] = current_state
         if status == ProductState.DELAYED_RETRY.value:
             update_payload["retry_target_state"] = current_state
             

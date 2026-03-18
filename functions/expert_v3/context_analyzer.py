@@ -54,10 +54,9 @@ ANALYSIS_SYSTEM_PROMPT = """Είσαι ένα σύστημα ανάλυσης co
 
 2. showSolutionButton: Τίθεται σε TRUE μόνο όταν:
    - ΟΛΑ τα ΚΡΙΣΙΜΑ knowledgeDimensions έχουν status "identified" (τουλάχιστον: υλικό, μέθοδος, φινίρισμα)
-   - Υπάρχουν προϊόντα που καλύπτουν ΟΛΑ τα απαιτούμενα sequence_steps για το συγκεκριμένο έργο
-     (π.χ. automotive με σπρέι: τουλάχιστον Αστάρι + Βασικό Χρώμα. Αν χρειάζεται βερνίκι, πρέπει κι αυτό.)
-   - Αν υπάρχει CUSTOM PAINT product στα accumulatedProducts (handle: custom-spray-paint, custom-bucket-paint, custom-touchup-kit),
-     ΠΡΕΠΕΙ η σχετική πληροφορία χρώματος (custom_color_spec) να έχει status "identified" στα knowledgeDimensions.
+   - Στη "δεξαμενή" (accumulatedProducts) υπάρχουν επιλογές προϊόντων που καλύπτουν ΟΛΑ τα απαιτούμενα sequence_steps για το συγκεκριμένο έργο (δηλαδή ο Gatherer έχει μαζέψει αρκετά "υλικά" για να χτιστεί η λύση).
+     (π.χ. automotive με σπρέι: υπάρχουν στη δεξαμενή Αστάρια ΚΑΙ Χρώματα Βάσης. Αν χρειάζεται βερνίκι, υπάρχουν ΚΑΙ βερνίκια.)
+   - Αν υπάρχει CUSTOM PAINT product στα accumulatedProducts (handle: custom-spray-paint, custom-bucket-paint, custom-touchup-kit), ΠΡΕΠΕΙ η σχετική πληροφορία χρώματος (custom_color_spec) να έχει status "identified".
    - Δεν υπάρχουν ανοιχτές ερωτήσεις κρίσιμες για την επιλογή προϊόντος.
    Σε αμφίβολη περίπτωση, προτίμησε FALSE.
 

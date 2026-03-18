@@ -234,30 +234,52 @@ def process_studio_queue(batch_id: str) -> dict:
     generation_model = batch_data.get("generation_model", DEFAULT_MODEL)
     mode = batch_data.get("mode", "parallel") # "parallel" (Studio) or "pipeline" (Governor)
 
-    completed = 0
-    failed = 0
+    from collections import deque
+    work_queue = deque(skus)
+    retry_counts = {sku: 0 for sku in skus}
     
     logger.info(f"[Studio {batch_id}] Worker Started (Model={generation_model})")
 
-    for i, sku in enumerate(skus):
+    while work_queue:
+        sku = work_queue.popleft()
+        
+        # Recalculate tallies based on current sku_results dict to handle cycling safely
+        completed = sum(1 for res in sku_results.values() if res.get("status") == "COMPLETED")
+        failed = sum(1 for res in sku_results.values() if res.get("status") == "FAILED")
+        
         # Skip previously completed items (crash recovery)
         if sku_results.get(sku, {}).get("status") in ("COMPLETED", "FAILED"):
-            completed += 1 if sku_results[sku]["status"] == "COMPLETED" else 0
-            failed += 1 if sku_results[sku]["status"] == "FAILED" else 0
             continue
 
         # Abort Check
         if batch_ref.get().get("status") == "ABORTED":
             return _handle_abort(db, batch_ref, skus, sku_results, completed, failed)
 
-        logger.info(f"[Studio {batch_id}] Processing [{i+1}/{len(skus)}]: {sku}")
+        logger.info(f"[Studio {batch_id}] Processing: {sku} (Remaining in queue: {len(work_queue)})")
         
         if mode == "pipeline":
-            # PIPELINE GOVERNOR MODE: Just trigger the first state and sleep
+            # PIPELINE GOVERNOR MODE: Smart resume or start
             try:
-                db.collection("staging_products").document(sku).update({
-                    "status": "GENERATING_METADATA",
-                    "enrichment_message": "Pipeline initiated..."
+                doc_ref = db.collection("staging_products").document(sku)
+                doc = doc_ref.get()
+                
+                target_state = "GENERATING_METADATA" # Default
+                
+                if doc.exists:
+                    data = doc.to_dict()
+                    current_status = data.get("status", "")
+                    
+                    # If this product failed previously, try to resume exactly where it crashed
+                    # to prevent repeating expensive steps like metadata and vision sourcing.
+                    if current_status in ("FAILED", "DELAYED_RETRY"):
+                        if data.get("failed_at_state"):
+                            target_state = data.get("failed_at_state")
+                        elif data.get("retry_target_state"):
+                            target_state = data.get("retry_target_state")
+
+                doc_ref.update({
+                    "status": target_state,
+                    "enrichment_message": f"Pipeline initiated (target: {target_state})..."
                 })
                 completed += 1
                 sku_results[sku] = {"status": "COMPLETED", "error": None}
@@ -286,21 +308,32 @@ def process_studio_queue(batch_id: str) -> dict:
                     VisionAgent.generate_studio(doc_ref, data)
                     
                     # If it didn't throw an exception, VisionAgent successfully pushed the final state.
-                    completed += 1
                     sku_results[sku] = {"status": "COMPLETED", "error": None}
                     
                     # Apply Rate Limit padding ONLY if we successfully executed a generation
                     delay = DELAY_IMAGEN if generation_model == "imagen" else DELAY_GEMINI
                 except Exception as e:
-                    failed += 1
                     error_str = str(e)[:150]
-                    sku_results[sku] = {"status": "FAILED", "error": error_str}
-                    # Handle failure gracefully
-                    from .controller import EnrichmentController
-                    EnrichmentController._handle_agent_failure(doc_ref, data, f"Studio error: {error_str[:80]}")
-                    delay = 0 # Skip rate limit timeout if execution failed
+                    
+                    # Fail-Fast and Yield for rate limits
+                    if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower()) and retry_counts[sku] < MAX_RETRIES:
+                        logger.warning(f"[Studio {batch_id}] Rate limited on {sku}. Yielding and moving to back of queue. (Attempt {retry_counts[sku]+1}/{MAX_RETRIES})")
+                        retry_counts[sku] += 1
+                        work_queue.append(sku)
+                        
+                        # Set to pending so frontend knows it's yielding, but don't mark as FAILED
+                        sku_results[sku] = {"status": "YIELDED", "error": "Rate limit: Auto-requeuing to back of batch."}
+                        
+                        # Update document gracefully
+                        doc_ref.update({"enrichment_message": f"Rate limited. Yielding... (Attempt {retry_counts[sku]}/{MAX_RETRIES})"})
+                        delay = 0 # Skip delay so we immediately process the next healthy item
+                    else:
+                        sku_results[sku] = {"status": "FAILED", "error": error_str}
+                        # Handle failure gracefully
+                        from .controller import EnrichmentController
+                        EnrichmentController._handle_agent_failure(doc_ref, data, f"Studio error: {error_str[:80]}")
+                        delay = 0 # Skip rate limit timeout if execution failed
             else:
-                failed += 1
                 sku_results[sku] = {"status": "FAILED", "error": "Product missing"}
                 delay = 0 # Skip rate limit timeout if product is entirely deleted
 
@@ -496,16 +529,21 @@ def check_and_process_batches() -> dict:
 
     # 2. No active workers -> Find next QUEUED batch and process it inline
     queued = db.collection("enrichment_batches").where(filter=firestore.FieldFilter("status", "==", "QUEUED")).get()
-    if not queued: return summary
+    if queued:
+        # Sort by priority and age
+        queued_docs = list(queued)
+        queued_docs.sort(key=lambda d: (0 if d.to_dict().get("priority") == "high" else 1, d.create_time))
+        
+        next_batch_id = queued_docs[0].id
+        logger.info(f"[Cron] Launching processing for QUEUED batch {next_batch_id}")
+        
+        # Process synchronously in this container.
+        try:
+            process_studio_queue(next_batch_id)
+            summary["processed"] += 1
+        except Exception as e:
+            logger.error(f"[Cron] Error processing batch {next_batch_id}: {e}")
 
-    # Sort by priority and age
-    queued_docs = list(queued)
-    queued_docs.sort(key=lambda d: (0 if d.to_dict().get("priority") == "high" else 1, d.create_time))
-    
-    next_batch_id = queued_docs[0].id
-    logger.info(f"[Cron] Launching processing for QUEUED batch {next_batch_id}")
-    
-    # Process synchronously in this container.
     # 3. Check for DELAYED_RETRY products that need resumption
     # To avoid overwhelming, just get up to 8 of them
     try:

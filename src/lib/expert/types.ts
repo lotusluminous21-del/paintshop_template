@@ -96,7 +96,18 @@ export interface Solution {
     projectType: string;
     difficulty: string;
     estimatedTime: string;
-    steps: SolutionStep[];
+    steps?: SolutionStep[];
+    sub_projects?: {
+        label: string;
+        steps: SolutionStep[];
+    }[];
+    shared_products?: {
+        product_title?: string;
+        handle: string;
+        variant_id?: string;
+        reason?: string;
+        [key: string]: any;
+    }[];
     totalPrice: number;
     totalProducts: number;
     assumptions: string[];
@@ -119,4 +130,42 @@ export interface ExpertChatResponse {
 export interface ExpertChatRequest {
     message: string;
     history: { role: 'user' | 'model'; content: string }[];
+}
+
+// ── V4 Pipeline Types ─────────────────────────────────────────────────
+
+export type PipelineStage = '' | 'planning' | 'retrieving' | 'synthesizing' | 'complete' | 'error';
+
+export interface InterviewDimension {
+    status: 'identified' | 'pending' | 'unknown';
+    value: string | null;
+}
+
+export interface InterviewProgress {
+    what: InterviewDimension;
+    why: InterviewDimension;
+    how: InterviewDimension;
+    where: InterviewDimension;
+    result: InterviewDimension;
+}
+
+export interface KnowledgeDimension {
+    id: string;
+    label: string;
+    status: 'identified' | 'pending' | 'unknown';
+    value: string | null;
+}
+
+export interface SidebarState {
+    overallPhase: 'interviewing' | 'ready_for_plan' | 'planning' | 'retrieving' | 'synthesizing' | 'complete';
+    overallPhaseLabel: string;
+    domain: string;
+    showSolutionButton: boolean;
+    briefReadiness: number;
+    interviewProgress: InterviewProgress;
+    knowledgeDimensions: KnowledgeDimension[];
+    logs: { type: string; message: string }[];
+    // Legacy V3 fields (kept for backward compatibility during transition)
+    recommendedProducts?: SuggestedProduct[];
+    analysisPhase?: string;
 }

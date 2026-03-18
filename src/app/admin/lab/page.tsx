@@ -184,10 +184,22 @@ function LabDashboardContent() {
     };
 
     const handleCommitToShopify = async () => {
+        const skusToSync = Array.from(selectedSkus).filter(sku => {
+            const p = products.find(prod => prod.sku === sku);
+            return p && p.status === ProductState.READY_FOR_PUBLISH;
+        });
+
+        if (skusToSync.length === 0) {
+            alert("Please select at least one product with status READY_FOR_PUBLISH to sync.");
+            return;
+        }
+
         setIsCommitting(true);
         try {
             const res = await fetch(`${getBaseEndpoint()}/pylon_sync_products`, {
-                method: "POST"
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ skus: skusToSync })
             });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({ error: "Unknown error" }));
@@ -341,8 +353,8 @@ function LabDashboardContent() {
         }
 
         if (activeFilter === "All Products") return true;
-        if (activeFilter === "Imported") return p.status === 'IMPORTED';
-        if (activeFilter === "Needs Review") return p.status === ProductState.NEEDS_METADATA_REVIEW || p.status === ProductState.NEEDS_IMAGE_REVIEW;
+        if (activeFilter === "Imported") return p.status === 'IMPORTED' || p.status === ProductState.IGNORED;
+        if (activeFilter === "Needs Review") return p.status === ProductState.NEEDS_METADATA_REVIEW || p.status === ProductState.NEEDS_IMAGE_REVIEW || p.status === ProductState.NEEDS_MANUAL_DATA;
         if (activeFilter === "Failed") return p.status === 'FAILED' || p.status === 'DELAYED_RETRY';
         if (activeFilter === "Processing") return (
             p.status.includes('GENERATING') ||
@@ -429,7 +441,7 @@ function LabDashboardContent() {
                         size="sm"
                         onClick={handleCommitToShopify}
                         className="h-8 text-xs font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition-colors disabled:opacity-50"
-                        disabled={isCommitting || products.filter(p => p.status === ProductState.READY_FOR_PUBLISH).length === 0}
+                        disabled={isCommitting || !Array.from(selectedSkus).some(sku => products.find(p => p.sku === sku)?.status === ProductState.READY_FOR_PUBLISH)}
                     >
                         {isCommitting ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />}
                         {isCommitting ? "Syncing..." : "Commit to Shopify"}
@@ -475,8 +487,8 @@ function LabDashboardContent() {
                         <div className="space-y-1">
                             {["All Products", "Imported", "Needs Review", "Failed", "Processing", "Ready"].map(f => {
                                 const count = f === "All Products" ? totalCount :
-                                    f === "Imported" ? products.filter(p => p.status === 'IMPORTED').length :
-                                        f === "Needs Review" ? products.filter(p => p.status === ProductState.NEEDS_METADATA_REVIEW || p.status === ProductState.NEEDS_IMAGE_REVIEW).length :
+                                    f === "Imported" ? products.filter(p => p.status === 'IMPORTED' || p.status === ProductState.IGNORED).length :
+                                        f === "Needs Review" ? products.filter(p => p.status === ProductState.NEEDS_METADATA_REVIEW || p.status === ProductState.NEEDS_IMAGE_REVIEW || p.status === ProductState.NEEDS_MANUAL_DATA).length :
                                             f === "Failed" ? products.filter(p => p.status === 'FAILED' || p.status === 'DELAYED_RETRY').length :
                                                 f === "Processing" ? products.filter(p => (
                                                     p.status.includes('GENERATING') ||
@@ -557,6 +569,7 @@ function LabDashboardContent() {
                                                 // Determine which step pipeline drawer should jump to
                                                 if (product.status === ProductState.NEEDS_METADATA_REVIEW) setTargetStep('metadata');
                                                 else if (product.status === ProductState.NEEDS_IMAGE_REVIEW) setTargetStep('sourcing');
+                                                else if (product.status === ProductState.NEEDS_MANUAL_DATA) setTargetStep('raw');
                                                 else if (product.status === ProductState.FAILED || product.status === ProductState.DELAYED_RETRY) {
                                                     if (!product.ai_data?.title || product.enrichment_message?.includes('Metadata')) setTargetStep('metadata');
                                                     else if (!product.ai_data?.selected_images?.base) setTargetStep('sourcing');
@@ -584,8 +597,9 @@ function LabDashboardContent() {
                                                 <span className={cn(
                                                     "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border",
                                                     product.status === ProductState.FAILED ? "bg-red-50 text-red-700 border-red-200" :
-                                                        product.status.includes('REVIEW') ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                                        product.status.includes('REVIEW') || product.status === ProductState.NEEDS_MANUAL_DATA ? "bg-amber-50 text-amber-700 border-amber-200" :
                                                             product.status === ProductState.READY_FOR_PUBLISH ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                                                product.status === ProductState.IGNORED ? "bg-zinc-100 text-zinc-500 border-zinc-300" :
                                                                 "bg-blue-50 text-blue-700 border-blue-200"
                                                 )}>
                                                     {product.status.replace(/_/g, ' ')}

@@ -30,104 +30,72 @@ class VariantAgent:
     @classmethod
     def _curate_variants(cls, client, product_type: str, variants: list) -> list:
         """
-        Post-processor that uses flash-lite to clean up generic LLM hallucinations,
-        deduplicate axes, and force strict alignment between Color and Size.
+        Post-processor that uses deterministic python logic to clean up 
+        LLM hallucinations, deduplicate axes, and ensure strictly clean variants.
         Preserves pylon_sku and price fields from source mapping.
         """
         if not variants:
             return []
 
-        logger.info(f"VariantAgent: Curating {len(variants)} raw variants for type '{product_type}' using flash-lite...")
+        logger.info(f"VariantAgent: Curating {len(variants)} raw variants via Python rules...")
 
-        prompt = f"""You are a strict Data Quality Assurance AI for Shopify.
-        You have received a raw list of product variants. Your job is to format, deduplicate, and curate them according to strict Category Rules.
-        
-        Product Type: {product_type}
-        Raw Variants: {json.dumps(variants, ensure_ascii=False)}
-        
-        CRITICAL CATEGORY RULES:
-        1. "Αστάρια & Υποστρώματα", "Χρώματα Βάσης", "Βερνίκια & Φινιρίσματα": Can have BOTH "Χρώμα" and "Χωρητικότητα/Βάρος" (Volume/Weight).
-        2. "Πινέλα & Εργαλεία", "Αξεσουάρ": NO variants allowed, OR only "Μέγεθος/Διάσταση" (Size). NEVER Color.
-        3. "Διαλυτικά & Αραιωτικά", "Προετοιμασία & Καθαρισμός": ONLY "Χωρητικότητα/Βάρος" allowed. NEVER Color.
-        4. "Σκληρυντές & Ενεργοποιητές": Usually ONLY "Χωρητικότητα/Βάρος".
-        
-        AXIS CONSTRAINTS:
-        - Option 1 MUST ONLY be used for "Χρώμα" (Translation: Color). If the product has no color variants, leave Option 1 empty/null and use Option 2.
-        - Option 2 MUST ONLY be used for "Χωρητικότητα/Βάρος" (Volume/Weight) or "Μέγεθος/Διάσταση" (Size/Dimension).
-        - NEVER invent custom axis names. Only use: "Χρώμα", "Χωρητικότητα/Βάρος", "Μέγεθος/Διάσταση".
-        
-        CONSISTENCY RULE (CRITICAL):
-        Every variant in the output MUST have at least one non-null Option Value.
-        - If the variant has a size/weight (e.g., "1LT", "5KG") but no color, assign it to Option 2 and leave Option 1 null.
-        - If the variant has a color but no size, assign it to Option 1 and leave Option 2 null.
-        - If you cannot find ANY distinguishing feature but there are multiple variants, use the `sku_suffix` or `variant_name` as the Option 1 value, and set the Option 1 name to "Επιλογή" (Choice).
-        - If any variant in the list has a value for Option 2 (e.g., "1LT"), then ALL variants in the final list must have a value for Option 2 to maintain Shopify axis alignment. Assign a logical default if missing.
-        
-        AXIS CONSTRAINTS & CLEANING:
-        - `variant_name` should be a clean combination: "Color - Size" e.g., "Μπλε - 1L".
-        - Deduplicate any identical variants.
-        - Ensure `option1_value` and `option2_value` are clean (e.g., "Μαύρο", not "Μαύρο Ματ").
-        
-        CROSS-AXIS DETECTION:
-        Look at the SKU suffixes carefully. If they contain BOTH a color AND a size/volume component (e.g. "-RED-1KG", "-GREY-5KG"), 
-        you MUST decompose them into TWO separate axes on each variant.
-        
-        PRESERVATION RULES (CRITICAL):
-        - You MUST preserve the `pylon_sku` field exactly as-is on every variant that has one.
-        - You MUST preserve the `price` field exactly as-is on every variant that has one.
-        - Variants that have a `pylon_sku` are SOURCE variants and MUST appear in the output.
-        - Ensure NO variant has BOTH `option1_value` and `option2_value` equal to null.
-        
-        Return the exact curated JSON array of variants.
-        """
+        curated = []
+        seen_skus = set()
 
-        try:
-            response = client.models.generate_content(
-                model=LLMConfig.get_model_name(complex=False),  # Fast flash-lite
-                contents=[prompt],
-                config=types.GenerateContentConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json",
-                    response_schema={
-                        "type": "ARRAY",
-                        "items": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "sku_suffix": {"type": "STRING"},
-                                "variant_name": {"type": "STRING"},
-                                "option1_name": {"type": "STRING", "nullable": True},
-                                "option1_value": {"type": "STRING", "nullable": True},
-                                "option2_name": {"type": "STRING", "nullable": True},
-                                "option2_value": {"type": "STRING", "nullable": True},
-                                "price": {"type": "NUMBER", "nullable": True},
-                                "pylon_sku": {"type": "STRING", "nullable": True}
-                            },
-                            "required": ["sku_suffix", "variant_name"]
-                        }
-                    }
-                )
-            )
+        for raw_v in variants:
+            v = dict(raw_v) # fast shallow copy
+            sku_s = v.get("sku_suffix", "").strip().upper()
+            if not sku_s or sku_s in seen_skus:
+                continue
 
-            result_text = response.text
-            if result_text.startswith("```json"):
-                result_text = result_text.replace("```json\n", "").replace("\n```", "")
+            # Deterministic cleanup of options. We now allow dynamic axes!
+            o1n = v.get("option1_name")
+            o1v = v.get("option1_value")
+            o2n = v.get("option2_name")
+            o2v = v.get("option2_value")
 
-            curated = json.loads(result_text)
+            # Clean empty pairs
+            if o1n and not o1v:
+                o1n = None
+            if o2n and not o2v:
+                o2n = None
 
-            # Safety: ensure all source variants survived curation
-            source_skus = {v.get("pylon_sku") for v in variants if v.get("pylon_sku")}
-            curated_skus = {v.get("pylon_sku") for v in curated if v.get("pylon_sku")}
-            missing = source_skus - curated_skus
-            if missing:
-                logger.warning(f"VariantAgent Curation: {len(missing)} source variants were dropped! Re-adding them.")
-                dropped = [v for v in variants if v.get("pylon_sku") in missing]
-                curated.extend(dropped)
+            # Fallback for completely empty variants that need differentiation
+            if not o1v and not o2v:
+                o1n = "Επιλογή"
+                o1v = sku_s
 
-            logger.info(f"VariantAgent Curation: {len(variants)} raw → {len(curated)} clean variants.")
-            return curated
-        except Exception as e:
-            logger.error(f"Variant Curation Failed: {e}. Falling back to raw list.")
-            return variants
+            v["option1_name"] = o1n
+            v["option1_value"] = o1v
+            v["option2_name"] = o2n
+            v["option2_value"] = o2v
+
+            # Build variant_name dynamically from whatever values exist
+            name_parts = [str(val) for val in [o1v, o2v] if val]
+            v["variant_name"] = " - ".join(name_parts)
+
+            curated.append(v)
+            seen_skus.add(sku_s)
+
+        # Safety: ensure all source variants survived curation (specifically price checks)
+        source_skus = {v.get("pylon_sku") for v in variants if v.get("pylon_sku")}
+        curated_skus = {v.get("pylon_sku") for v in curated if v.get("pylon_sku")}
+        missing = source_skus - curated_skus
+        if missing:
+            logger.warning(f"VariantAgent Curation: {len(missing)} source variants were dropped! Re-adding them.")
+            dropped = [v for v in variants if v.get("pylon_sku") in missing]
+            curated.extend(dropped)
+
+        # Ensure that ALL prices from source survived!
+        # The LLM frequently drops the price field, so we must inject it back.
+        price_map = {v.get("pylon_sku"): v.get("price") for v in variants if v.get("pylon_sku") and v.get("price") is not None}
+        for v in curated:
+            p_sku = v.get("pylon_sku")
+            if p_sku in price_map:
+                v["price"] = price_map[p_sku]
+
+        logger.info(f"VariantAgent Curation: {len(variants)} raw → {len(curated)} clean variants.")
+        return curated
 
     @staticmethod
     def process(doc_ref, data: dict):
@@ -184,46 +152,41 @@ class VariantAgent:
             {variant_search_context}
             ================================================================
 
-            ===== SKU PATTERN INSIGHTS =====
-            - Suffixes like "-1KG", "-5KG", "-1L", "-400ML" are ALWAYS size/weight dimensions.
-            - Suffixes like "-RED", "-BLUE", "-WHITE" are ALWAYS color dimensions.
-            - In codes like "PE240101" vs "PE240105", different numeric endings often map to different packaging sizes (e.g. 01=1kg, 05=5kg).
+            ===== SKU & TEXT PATTERN INSIGHTS =====
+            - Suffixes or text like "1KG", "5KG", "1L", "2,5LT", "0.75LT", "400ML" are ALWAYS size/weight dimensions.
+            - Text like "RED", "BLUE", "WHITE", "ΛΕΥΚΟ", "ΓΚΡΙ", "ΠΟΡΤΟΚΑΛΙ" are ALWAYS color dimensions.
             ================================================================
 
             VARIANT RESOLUTION RULES:
-            1. START with all source variants. For each one, analyze its `name` field AND its `sku` field to determine:
-               - option1 (Χρώμα/Color): Extract color info if present.
-               - option2 (Χωρητικότητα/Βάρος or Μέγεθος/Διάσταση): Extract size/volume.
+            1. DYNAMIC AXIS EXTRACTION & FLEXIBILITY:
+               For EVERY source variant, you MUST analyze the full text of its original name and deduce WHAT makes these variants different.
+               You are NO LONGER restricted to just Color or Weight. You must dynamically title your axes based on what the product actually is.
+               Examples:
+               - For Paint: `option1_name`="Χρώμα", `option2_name`="Χωρητικότητα"
+               - For Sandpaper: `option1_name`="Νούμερο (Grit)"
+               - For Tape/Masking: `option1_name`="Πλάτος (mm)", `option2_name`="Μήκος (m)"
+               - For Brushes/Tools: `option1_name`="Μέγεθος" or "Διάσταση"
                
-            2. DUAL AXIS DETECTION (MANDATORY):
-               If you see multiple variants with the same color but different SKUs or prices, you MUST find a second dimension to distinguish them. 
-               Check SKU suffixes or Numeric differences.
-               Example: 
-               PE240101 (Μπλε) + PE240105 (Μπλε) 
-               Result: 
-               Var 1: Option 1: "Μπλε", Option 2: "1kg"
-               Var 2: Option 1: "Μπλε", Option 2: "5kg"
+            2. UNIQUENESS GUARANTEE (MANDATORY):
+               EVERY variant MUST have a UNIQUE combination of option values. 
+               If your variants have different SKUs or prices, they differ in some dimension. YOU MUST extract that dimension from their text strings and put it in Option 1 or Option 2. Never output identical variants.
 
-            3. CROSS-AXIS: If a product has BOTH color AND size dimensions, create the full matrix.
+            3. CROSS-AXIS: If a product has multiple dimensions (e.g., Color AND Size), create the full matrix.
             
-            4. DISCOVERY: If web search found ADDITIONAL variants not in source, ADD them with price: null.
+            4. DISCOVERY: If web search found ADDITIONAL valid variants not in source, ADD them with price: null.
 
-            CATEGORY AXIS CONSTRAINTS (product type: "{product_type}"):
-            - "Πινέλα & Εργαλεία", "Αξεσουάρ": NO Color. Only "Μέγεθος/Διάσταση" if applicable.
-            - "Διαλυτικά & Αραιωτικά", "Προετοιμασία & Καθαρισμός": ONLY "Χωρητικότητα/Βάρος". NO Color.
-            - "Σκληρυντές & Ενεργοποιητές": Usually ONLY "Χωρητικότητα/Βάρος".
-            - All other types: Can have BOTH "Χρώμα" and "Χωρητικότητα/Βάρος".
+            CATEGORY GUIDELINES (product type: "{product_type}"):
+            - If it's a Tool/Accessory, look for Dimensions, Lengths, Diameters.
+            - If it's a Liquid (Solvent/Hardener/Paint), look for Weight/Volume (Liters, ml, kg).
+            - If it's Paint, look for Color in addition to Volume.
 
-            AXIS NOMENCLATURE:
-            - `option1_name` MUST ALWAYS be "Χρώμα" (or null if no color).
-            - `option2_name` MUST ALWAYS be "Χωρητικότητα/Βάρος" or "Μέγεθος/Διάσταση" (or null).
+            VARIANT NAME: Create a clean Greek name combining the option values, e.g. "Λευκό - 1kg", "Νο 80", or "19mm x 50m".
 
-            VARIANT NAME: Create a clean Greek name combining the option values, e.g. "Μαύρο - 400ml" or just "2.5L".
-
-            MANDATORY OPTIONS (CRITICAL):
-            Every variant MUST have at least ONE non-null option value. 
-            If a SKU is "-1KG", then `option2_name` must be "Χωρητικότητα/Βάρος" and `option2_value` must be "1kg".
-            NEVER return a variant where all option values are null if the SKU suffix implies a dimension.
+            MANDATORY SCHEMA USAGE (CRITICAL):
+            Every variant MUST have at least ONE non-null option. 
+            `option1_name` must be the name of the primary changing attribute.
+            `option1_value` must be the value.
+            Use `option2_name` and `option2_value` if there is a second changing attribute.
 
             Output a JSON array of variant objects.
             """

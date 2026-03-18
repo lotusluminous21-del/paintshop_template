@@ -682,8 +682,8 @@ class ShopifyClient:
              "description": "Brief product summary for SEO and storefront cards", "pin": True},
             {"name": "Brand", "key": "brand", "type": "single_line_text_field",
              "description": "Product manufacturer brand", "pin": True},
-            {"name": "Category", "key": "category", "type": "single_line_text_field",
-             "description": "Product category (e.g. Primer, Topcoat, Thinner)", "pin": True},
+            {"name": "Κατηγορία Έργου / Project Category", "key": "category", "type": "single_line_text_field",
+             "description": "Project category (e.g. Automotive, Marine, Industrial)", "pin": True},
             {"name": "AI Confidence", "key": "ai_confidence", "type": "number_decimal",
              "description": "AI enrichment confidence score (0-1)", "pin": False},
             # Paint technical specs

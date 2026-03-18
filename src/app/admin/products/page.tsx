@@ -186,7 +186,7 @@ function StagingAreaContent() {
                                 const isSelected = selectedSkus.has(p.sku);
                                 const isPublished = !!p.shopify_product_id;
                                 const baseStudioImg = p.ai_data?.images?.find((img) => img.suffix === 'base' || img.suffix?.toLowerCase() === 'base' || !img.suffix)?.url;
-                                const imgUrl = p.ai_data?.generated_images?.base || p.ai_data?.selected_images?.base || baseStudioImg || p.ai_data?.images?.[0]?.url || p.ai_data?.variant_images?.base?.[0]?.url;
+                                const imgUrl = baseStudioImg || p.ai_data?.generated_images?.base || p.ai_data?.images?.[0]?.url || p.ai_data?.selected_images?.base || p.ai_data?.variant_images?.base?.[0]?.url;
 
                                 return (
                                     <tr

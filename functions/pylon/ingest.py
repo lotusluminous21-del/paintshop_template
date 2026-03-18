@@ -33,7 +33,7 @@ def group_variants_with_llm(products: List[Dict[str, Any]]) -> List[Dict[str, An
     from google.genai import types
 
     client = LLMConfig.get_client()
-    model_name = LLMConfig.get_model_name(complex=True)
+    model_name = LLMConfig.get_model_name(complex=False)
     
     grouped_products_map = {}
     
@@ -51,20 +51,30 @@ def group_variants_with_llm(products: List[Dict[str, Any]]) -> List[Dict[str, An
                 "comments": p["pylon_data"].get("comments", "")
             })
             
-        prompt = f"""You are a strict Data Deduplication AI for a Greek e-commerce paint and marine store.
-        Your job is to identify products that are simply VARIANTS of the exact same underlying base product.
-        Often these differ only by color (e.g., BLACK, WHITE, RED) or size/volume (e.g., 400ML, 1LT, 750ML).
-        
+        prompt = f"""You are an advanced AI Data Gatekeeper & Deduplication system for a Greek e-commerce paint store.
+
+        Your job is TWO-FOLD:
+        1. Identify products that are simply VARIANTS of the exact same underlying base product (e.g. differing only by color/size). Group them.
+        2. Act as a Quality Assurance Gatekeeper to triage bad data before expensive downstream web scraping.
+
         RAW INPUT PRODUCTS:
         {json.dumps(items_for_llm, ensure_ascii=False)}
         
-        RULES:
+        RULES FOR DEDUPLICATION:
         1. Group products together ONLY if they represent the same underlying item with different attributes (color/size).
-        2. Choose ONE SKU from the group to be the "parent_sku" (ideally the shortest or most generic one, or just the first one).
+        2. Choose ONE SKU from the group to be the "parent_sku" (ideally the shortest or most generic one).
         3. All SKUs in that group (including the parent itself) should be listed in the "member_skus" array.
-        4. If a product has no variants, it should still be returned as its own group with just its own SKU in "member_skus" and itself as the "parent_sku".
         
-        Return a strict JSON array of objects with ALWAYS two fields: "parent_sku" and "member_skus".
+        RULES FOR GATEKEEPING & SEARCH PREPARATION (For the Group as a whole):
+        1. Determine if the group is a valid retail product (`is_valid_retail_product`). Exclude generic categories like "Έξοδα Αποστολής", "Υπηρεσία", "Κενό Κουτί".
+        2. Extract a `clean_search_target`: Remove abbreviations, color variants, size variants, or Greeklish from the raw name to create a perfect, clean search query string (e.g., "ΑΣΤΑΡΙ ΠΛΑΣΤ. ΜΑΥΡΟ 400ML" -> "Αστάρι Πλαστικών").
+        3. Extract the `brand` if explicitly visible or clearly implied. Else null.
+        4. Assign a `searchability_score` (0.0 to 1.0): 
+           - High (> 0.6): Product has a clear brand, model, or unique identifier making it easy to find on the web (e.g. "HB Body 980 Primer", "Smirdex 135").
+           - Low (< 0.6): Extremely generic product impossible to accurately search (e.g., "ΠΙΝΕΛΟ", "ΣΠΑΤΟΥΛΑ", "ΔΙΑΛΥΤΙΚΟ ΝΙΤΡΟΥ").
+        5. If `searchability_score` < 0.6, you MUST provide exactly 3 `search_suggestions`: Smart, educated guesses of what specific branded products this vague token might actually refer to in a paint/auto shop context. Provide the suggested `term` and your `confidence` (0.0 to 1.0) for each. If score > 0.6, this can be empty.
+        
+        Return a strict JSON array of objects adhering to the requested schema.
         """
         
         try:
@@ -83,9 +93,25 @@ def group_variants_with_llm(products: List[Dict[str, Any]]) -> List[Dict[str, An
                                 "member_skus": {
                                     "type": "ARRAY",
                                     "items": {"type": "STRING"}
+                                },
+                                "is_valid_retail_product": {"type": "BOOLEAN"},
+                                "clean_search_target": {"type": "STRING"},
+                                "brand": {"type": "STRING", "nullable": True},
+                                "searchability_score": {"type": "NUMBER"},
+                                "search_suggestions": {
+                                    "type": "ARRAY",
+                                    "items": {
+                                        "type": "OBJECT",
+                                        "properties": {
+                                            "term": {"type": "STRING"},
+                                            "confidence": {"type": "NUMBER"}
+                                        },
+                                        "required": ["term", "confidence"]
+                                    },
+                                    "nullable": True
                                 }
                             },
-                            "required": ["parent_sku", "member_skus"]
+                            "required": ["parent_sku", "member_skus", "is_valid_retail_product", "clean_search_target", "searchability_score"]
                         }
                     }
                 )
@@ -113,6 +139,30 @@ def group_variants_with_llm(products: List[Dict[str, Any]]) -> List[Dict[str, An
                         
                 # Make a distinct copy of the parent to become the master record
                 parent_doc = dict(chunk_products_by_sku[parent_sku])
+                
+                # Update parent with the newly extracted metadata
+                if mapping.get("is_valid_retail_product") is False:
+                    parent_doc["status"] = "IGNORED"
+                    parent_doc["enrichment_message"] = "Marked as an invalid retail product (e.g., administrative entry)."
+                elif mapping.get("searchability_score", 1.0) < 0.6:
+                    parent_doc["status"] = "NEEDS_MANUAL_DATA"
+                    parent_doc["enrichment_message"] = "Product name is too generic for automated web search."
+                else:
+                    # Let the pipeline know we are ready for it, overriding the default IMPORTED state if new
+                    parent_doc["status"] = "PENDING_METADATA"
+                    # Store the clean search query so the enrichment agent searches for it!
+                    if mapping.get("clean_search_target"):
+                        parent_doc["search_query"] = mapping.get("clean_search_target")
+                    parent_doc["enrichment_message"] = "Ready for AI enrichment."
+                
+                # Merge AI data (like brand, score) into the ai_data map
+                if "ai_data" not in parent_doc:
+                    parent_doc["ai_data"] = {}
+                if mapping.get("brand"):
+                    parent_doc["ai_data"]["brand"] = mapping.get("brand")
+                parent_doc["ai_data"]["searchability_score"] = mapping.get("searchability_score", 1.0)
+                if mapping.get("search_suggestions"):
+                    parent_doc["ai_data"]["search_suggestions"] = mapping.get("search_suggestions")
                 
                 # Ensure the 'source_variants' array exists on the parent
                 if "source_variants" not in parent_doc["pylon_data"]:
@@ -366,10 +416,11 @@ def ingest_products_to_firestore(products: List[Dict[str, Any]], db: firestore.c
             if existing:
                 # PRESERVATION LOGIC:
                 # If the product is already ENRICHED, APPROVED, or in a specific wizard step, 
-                # we don't want to reset it to "IMPORTED".
+                # we don't want to reset its status.
                 current_status = existing.get("status")
-                if current_status and current_status != "IMPORTED":
-                    # Keep existing status
+                INITIAL_STATES = {"IMPORTED", "PENDING_METADATA", "NEEDS_MANUAL_DATA", "IGNORED"}
+                if current_status and current_status not in INITIAL_STATES:
+                    # Keep existing advanced status
                     p["status"] = current_status
                 results["updated"] += 1
             else:
