@@ -26,7 +26,7 @@ env:
     value: "pavlicevits-9a889"
   # Firebase Public Config
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: "AIzaSyCt3GfPqUMPSNFW_x3wUCmGR5Y0_luS9iE"
+    secret: FIREBASE_API_KEY
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
     value: "pavlicevits-9a889.firebaseapp.com"
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
@@ -40,9 +40,9 @@ env:
   - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
     value: "G-5VREPN5HD5"
   - variable: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-    value: "pk_test_51SU68B0O5BKJ7zFDGkFzh4tboG15Z9LRRdLoI5UcERKgXQaUYFG4gWcWL6Q3E3rfR2yrifQir3DC7KgOT8oWG4kT00yTFqG4b6"
+    secret: STRIPE_PUBLISHABLE_KEY
   - variable: NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-    value: "AIzaSyDEBkHg2TfFprruN-a_AKUAWWtuqjXQcqo"
+    secret: GOOGLE_MAPS_API_KEY
   - variable: SHOPIFY_STOREFRONT_ACCESS_TOKEN
     secret: SHOPIFY_STOREFRONT_ACCESS_TOKEN
   - variable: NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN
@@ -75,6 +75,9 @@ env:
     value: "https://pavlicevits.myshopify.com/api" # Placeholder for empty string
 
 secrets:
+  - variable: FIREBASE_API_KEY
+  - variable: STRIPE_PUBLISHABLE_KEY
+  - variable: GOOGLE_MAPS_API_KEY
   - variable: SHOPIFY_STOREFRONT_ACCESS_TOKEN
   - variable: STRIPE_SECRET_KEY
   - variable: STRIPE_WEBHOOK_SECRET
