@@ -110,7 +110,7 @@ export default function ContactClient() {
                     <ImageReveal delay={0.2} className="order-1 lg:order-2 h-[300px] sm:h-[400px] md:h-[500px] w-full relative overflow-hidden border border-border group bg-muted/20">
                         {/* Interactive Customized Google Map */}
                         <div className="w-full h-full grayscale-[0.3] opacity-[0.9] transition-all duration-500 group-hover:grayscale-0 group-hover:opacity-100 dark:opacity-[0.85] dark:group-hover:opacity-100 relative z-0">
-                            <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}>
+                            <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY || ''}>
                                 <Map
                                     defaultCenter={POSITION}
                                     defaultZoom={16}
